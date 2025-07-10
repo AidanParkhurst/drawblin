@@ -1,0 +1,21 @@
+{
+  "name": "drawblin",
+  "version": "1.0.0",
+  "description": "Social drawing space",
+  "type": "module",
+  "main": "",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.1.0",
+    "p5": "^2.0.3",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "vite": "^7.0.3"
+  }
+}
