@@ -1,4 +1,5 @@
 import { sendMessage } from "./network.js";
+import { you } from "./index.js";
 
 class Input {
     constructor(x, y, width, height, chat = null) {
@@ -19,11 +20,20 @@ class Input {
             if (mouseIsPressed && !this.active) {
                 this.active = true; // Activate the input box on mouse press
                 this.text = ""; // Clear text when activated
+                if (you) {
+                    you.frozen = true; // Freeze the goblin when input is active
+                }
             }
             cursor('text'); // Change cursor to text input style
         } else {
             this.hover = false; // Reset hover state if mouse is not over the input box
             cursor(ARROW);
+            if (mouseIsPressed && this.active) {
+                this.active = false; // Deactivate the input box on mouse press outside
+                if (you) {
+                    you.frozen = false; // Unfreeze the goblin when input is deactivated
+                }
+            }
         }
         this.display();
     }
@@ -69,7 +79,11 @@ class Input {
             if (this.text.trim() !== "" && this.text !== this.placeholder) {
                 sendMessage({type: "chat", content: this.text}); // Send the message to the server
                 if (this.chat) {
-                    this.chat.messages.push(`You: ${this.text}`); // Add the message to the chat display
+                    this.chat.messages.push("You: " + this.text); // Add the message to the chat display
+                }
+                if (you) {
+                    you.say(this.text); // Goblin says the message
+                    you.frozen = false; // Unfreeze the goblin after sending the message
                 }
             }
             this.text = this.placeholder; // Clear the input after sending

@@ -5,6 +5,7 @@ class Chat {
         this.messages = [];
         this.height = height;
         this.width = width;
+        this.max_messages = 7; // Maximum number of messages to display
         this.input = new Input(20, windowHeight - height + (height - 60), width, 40, this);
     }
 
@@ -12,6 +13,9 @@ class Chat {
     update() {
         this.display();
         this.input.update();
+        if (this.messages.length > this.max_messages) {
+            this.messages.splice(0, this.messages.length - this.max_messages);
+        }
     }
 
     display() {

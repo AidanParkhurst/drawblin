@@ -16,6 +16,7 @@ let font_regular;
 let drawing = false;
 let last_mouse = { x: 0, y: 0 };
 let line_granularity = 10; // How many pixels between each line point
+let last_line_count = 0;
 
 // networking
 let heartbeat = 300; 
@@ -69,15 +70,19 @@ window.draw = () => {
 }
 
 window.mousePressed = () => {
+    if (chat.input.contains(mouseX, mouseY)) return;
     drawing = true;
     last_mouse = createVector(you.cursor.x, you.cursor.y);
+    last_line_count = you.lines.length; // Store the initial line count
 }
 
 window.mouseReleased = () => {
+    if (drawing && you.lines.length === last_line_count) { // If no new line was added
+        var l = new Line(createVector(you.cursor.x, you.cursor.y), createVector(you.cursor.x, you.cursor.y), you.color, 5);
+        you.lines.push(l); // Store the line in the goblin's lines array
+    }
     drawing = false;
     // add a dot line to the goblin's lines
-    var l = new Line(createVector(you.cursor.x, you.cursor.y), createVector(you.cursor.x, you.cursor.y), you.color, 5);
-    you.lines.push(l); // Store the line in the goblin's lines array
 }
 
 window.keyPressed = () => {
@@ -102,7 +107,10 @@ ws.onmessage = (event) => {
         case "chat":
             // Handle chat messages
             if (data.userId) {
+                let chatUser = goblins.find(g => g.id === data.userId);
+                chatUser.say(data.content);
                 chat.messages.push(`${data.userId}: ${data.content}`);
+    
             } else {
                 chat.messages.push(`Unknown: ${data.content}`);
             }
@@ -134,3 +142,5 @@ ws.onmessage = (event) => {
             break;
     }
 }
+
+export { you };

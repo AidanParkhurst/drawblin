@@ -23,6 +23,11 @@ class Goblin {
         this.velocity = createVector(0, 0); // Current velocity of the player
         this.friction = 0.9; // Friction to slow down the player
         this.input = createVector(0, 0); // Input vector for movement
+        this.frozen = false;
+
+        this.speech = ""; // Speech text for the goblin
+        this.speech_timer = 0; // Timer for speech display
+        this.speech_duration = 3000; // Duration to display speech in milliseconds
     }
 
     // Helper function to compare colors (handles both arrays and primitives)
@@ -58,28 +63,40 @@ class Goblin {
             this.cursor.y = this.y + cursor_vector.y;
         }
 
+        this.display_range(); 
         this.display_cursor();
-        this.display_lines(this.lines);    
+        this.display_lines(this.lines);
+
+        if (this.speech !== "") {
+            this.display_speech();
+            this.speech_timer += delta; // Increment speech timer
+            if (this.speech_timer >= this.speech_duration) {
+                this.speech = ""; // Clear speech after duration
+                this.speech_timer = 0; // Reset timer
+            }
+        }
     }
     
     display() {
-
         push();
 
         fill(this.color);
         noStroke();
         ellipse(this.x, this.y, this.size);
 
-        // Dotted line circle around the goblin (cursor range)
-        push();
-        drawingContext.setLineDash([40, 20]); // Set dashed line style
-        translate(this.x, this.y);
-        rotate(frameCount * 0.009); // Rotate the circle for a dynamic effect
-        stroke(this.color[0], this.color[1], this.color[2], this.velocity.mag() * 100 / 10);
-        strokeWeight(5);
-        noFill();
-        ellipse(0, 0, this.cursor_range * 2);
         pop();
+    }
+
+    display_speech() {
+        push();
+        textSize(16);
+        // Create smooth fade-in to midpoint, then fade-out
+        var progress = this.speech_timer / this.speech_duration;
+        var opacity = 255 * sin(progress * PI);
+        var offsetX = 20 + progress * 10;
+        var offsetY = 10 + progress * 10;
+        fill(this.color[0], this.color[1], this.color[2], opacity);
+        text(this.speech, this.x + offsetX, this.y - offsetY);
         pop();
     }
 
@@ -94,6 +111,19 @@ class Goblin {
         pop();
     }
     
+    display_range() {
+        // Dotted line circle around the goblin (cursor range)
+        push();
+        drawingContext.setLineDash([40, 20]); // Set dashed line style
+        translate(this.x, this.y);
+        rotate(frameCount * 0.009); // Rotate the circle for a dynamic effect
+        stroke(this.color[0], this.color[1], this.color[2], this.velocity.mag() * 100 / 10);
+        strokeWeight(5);
+        noFill();
+        ellipse(0, 0, this.cursor_range * 2);
+        pop();
+    }
+
     display_lines(lines) {
         if (lines.length === 0) return;
         // console.log("Goblin id:" + this.id + " displaying " + lines.length + " lines");
@@ -155,7 +185,17 @@ class Goblin {
         this.y += this.velocity.y;
     }
 
+    say(message) {
+        this.speech = message;
+        this.speech_timer = 0; // Reset speech timer
+    }
+
     check_input() {
+        if (this.frozen) {
+            this.input.x = 0; // Reset input if frozen
+            this.input.y = 0;
+            return; // If the goblin is frozen, do not process input
+        }
         if (keyIsDown('a')) { // 'A' key for left movement
             this.input.x = -1;
         } else if (keyIsDown('d')) { // 'D' key for right movement
@@ -239,11 +279,10 @@ class Goblin {
             }
         }
 
-            // Add the final line
-            simplified.push(new Line(start, end, color, weight));
-            return simplified;
-        }
-
+        // Add the final line
+        simplified.push(new Line(start, end, color, weight));
+        return simplified;
+    }
 }
 
 export default Goblin;
