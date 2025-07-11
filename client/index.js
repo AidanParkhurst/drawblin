@@ -19,7 +19,7 @@ let line_granularity = 10; // How many pixels between each line point
 let last_line_count = 0;
 
 // networking
-let heartbeat = 300; 
+let heartbeat = 150; 
 let heartbeat_timer = 0;
 
 async function start() {
@@ -34,8 +34,7 @@ async function start() {
 window.setup = async() => {
     createCanvas(windowWidth, windowHeight);
     ellipseMode(CENTER);
-    font_regular = await loadFont("assets/Neucha-Regular.ttf");
-    textFont(font_regular);
+    textFont('Verdana');
     textSize(16);
     start();
 }
@@ -109,10 +108,10 @@ ws.onmessage = (event) => {
             if (data.userId) {
                 let chatUser = goblins.find(g => g.id === data.userId);
                 chatUser.say(data.content);
-                chat.messages.push(`${data.userId}: ${data.content}`);
-    
+                chat.messages.push({user: chatUser, content: data.content});
+
             } else {
-                chat.messages.push(`Unknown: ${data.content}`);
+                chat.messages.push({user: null, content: data.content});
             }
             break;
         case "update":
@@ -143,4 +142,4 @@ ws.onmessage = (event) => {
     }
 }
 
-export { you };
+export { you, goblins, chat };

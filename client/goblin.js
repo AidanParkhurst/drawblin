@@ -1,4 +1,3 @@
-import p5 from 'p5';
 import Line from './line.js';
 
 class Goblin {
@@ -13,6 +12,7 @@ class Goblin {
 
         this.cursor = createVector(x, y); // Create a cursor for the goblin
         this.cursor_range = 200; // Range within which the cursor can move
+        this.cursor_vector = createVector(0, 0); // Vector to track cursor position relative to the goblin
         this.lines = []; // Array to store lines drawn by the goblin
         this.simplify_timer = 0; // Timer for simplifying lines
         this.simplify_interval = 1000; // Interval for simplifying lines in milliseconds
@@ -56,11 +56,11 @@ class Goblin {
             this.cursor.y = lerp(this.cursor.y, mouseY, 0.3);
         }
         // Limit the cursor's distance from the goblin
-        let cursor_vector = createVector(this.cursor.x - this.x, this.cursor.y - this.y);
-        if (cursor_vector.mag() > this.cursor_range) {
-            cursor_vector.setMag(this.cursor_range);
-            this.cursor.x = this.x + cursor_vector.x;
-            this.cursor.y = this.y + cursor_vector.y;
+        this.cursor_vector = createVector(this.cursor.x - this.x, this.cursor.y - this.y);
+        if (this.cursor_vector.mag() > this.cursor_range) {
+            this.cursor_vector.setMag(this.cursor_range);
+            this.cursor.x = this.x + this.cursor_vector.x;
+            this.cursor.y = this.y + this.cursor_vector.y;
         }
 
         this.display_range(); 
@@ -117,7 +117,8 @@ class Goblin {
         drawingContext.setLineDash([40, 20]); // Set dashed line style
         translate(this.x, this.y);
         rotate(frameCount * 0.009); // Rotate the circle for a dynamic effect
-        stroke(this.color[0], this.color[1], this.color[2], this.velocity.mag() * 100 / 10);
+        // if the cursor is almost at the edge of the range, make the stroke more visible
+        stroke(this.color[0], this.color[1], this.color[2], (this.velocity.mag() * 100 / 10));
         strokeWeight(5);
         noFill();
         ellipse(0, 0, this.cursor_range * 2);

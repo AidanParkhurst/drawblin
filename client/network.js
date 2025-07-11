@@ -1,5 +1,5 @@
-// const ws = new WebSocket("https://backend-wmm9.onrender.com"); // Change to server URL
-const ws = new WebSocket("ws://localhost:3000");
+const ws = new WebSocket("https://backend-wmm9.onrender.com"); // Change to server URL
+// const ws = new WebSocket("ws://localhost:3000");
 
 // ws.onopen and ws.onmessage handled in index.js
 

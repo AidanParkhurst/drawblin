@@ -7,7 +7,7 @@ class Input {
         this.y = y; // Y position of the input box
         this.width = width; // Width of the input box
         this.height = height; // Height of the input box
-        this.placeholder = "Write a message here..."; // Placeholder text
+        this.placeholder = "Press Enter or Click Here"; // Placeholder text
         this.text = this.placeholder; // Text inside the input box
         this.active = false; // Whether the input box is active (focused)
         this.hover = false; // Whether the mouse is hovering over the input box   
@@ -44,20 +44,20 @@ class Input {
         fill(0,0)
         drawingContext.setLineDash([40, 20]); // Set dashed line style
         strokeWeight(5);
-        stroke(0,10);
+        stroke(you.color[0], you.color[1], you.color[2], 10); // Use goblin's color with transparency
         if (this.hover) {
-            stroke(0, 50); // Darker stroke when hovered
+            stroke(you.color[0], you.color[1], you.color[2], 20); // Darker stroke when hovered
         }
         if (this.active) {
-            stroke(0, 100); // Brighter stroke when active
+            stroke(you.color[0], you.color[1], you.color[2], 40); // Brighter stroke when active
         }
         rect(this.x, this.y, this.width, this.height, 5);
         noStroke();
         textSize(24);
-        if (this.acctive || this.hover) {
-            fill(0, 0, 0, 150);
+        if (this.active || this.hover) {
+            fill(you.color[0], you.color[1], you.color[2], 150);
         } else {
-            fill(0, 50)
+            fill(you.color[0], you.color[1], you.color[2], 50);
         }
         text(this.text, this.x + 10, this.y + this.height / 2 + 5);
 
@@ -71,15 +71,24 @@ class Input {
 
     // Handle key presses
     keyPressed(keyCode) {
-        if (!this.active) return; // Only handle key presses if the input box is active
-        if (keyCode === 8 || keyCode === 46) {
+        if (!this.active) {
+            if (keyCode === 13) { // If Enter is pressed, activate the input box
+                this.active = true; // Activate the input box
+                this.text = ""; // Clear the text
+                if (you) {
+                    you.frozen = true; // Freeze the goblin when input is active
+                }
+            }
+            return; // Exit if the input box is not active
+        } 
+        if (keyCode === 8 || keyCode === 46) { // Backspace or Delete
             this.text = this.text.slice(0, -1); // Remove the last character
         } else if (keyCode === 13) { // Enter key pressed
             // Send the message to the server or handle it as needed
             if (this.text.trim() !== "" && this.text !== this.placeholder) {
                 sendMessage({type: "chat", content: this.text}); // Send the message to the server
                 if (this.chat) {
-                    this.chat.messages.push("You: " + this.text); // Add the message to the chat display
+                    this.chat.messages.push({user: you, content: this.text}); // Add the message to the chat display
                 }
                 if (you) {
                     you.say(this.text); // Goblin says the message
@@ -88,8 +97,10 @@ class Input {
             }
             this.text = this.placeholder; // Clear the input after sending
             this.active = false; // Deactivate the input box
-        } else if (keyCode >= 32 && keyCode <= 126) { // Check for printable characters
-            this.text += String.fromCharCode(keyCode); // Append the character to the text
+        } else if (key.length === 1 && key !== '\n' && key !== '\r' && key !== '\t') { 
+            // Use 'key' instead of keyCode for proper character handling
+            // Only add printable characters (single character, not special keys)
+            this.text += key;
         }
     }
 
