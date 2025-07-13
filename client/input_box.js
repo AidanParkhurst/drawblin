@@ -44,20 +44,20 @@ class Input {
         fill(0,0)
         drawingContext.setLineDash([40, 20]); // Set dashed line style
         strokeWeight(5);
-        stroke(you.color[0], you.color[1], you.color[2], 10); // Use goblin's color with transparency
+        stroke(you.ui_color[0], you.ui_color[1], you.ui_color[2], 10); // Use goblin's color with transparency
         if (this.hover) {
-            stroke(you.color[0], you.color[1], you.color[2], 20); // Darker stroke when hovered
+            stroke(you.ui_color[0], you.ui_color[1], you.ui_color[2], 20); // Darker stroke when hovered
         }
         if (this.active) {
-            stroke(you.color[0], you.color[1], you.color[2], 40); // Brighter stroke when active
+            stroke(you.ui_color[0], you.ui_color[1], you.ui_color[2], 40); // Brighter stroke when active
         }
         rect(this.x, this.y, this.width, this.height, 5);
         noStroke();
         textSize(24);
         if (this.active || this.hover) {
-            fill(you.color[0], you.color[1], you.color[2], 150);
+            fill(you.ui_color[0], you.ui_color[1], you.ui_color[2], 150);
         } else {
-            fill(you.color[0], you.color[1], you.color[2], 50);
+            fill(you.ui_color[0], you.ui_color[1], you.ui_color[2], 50);
         }
         text(this.text, this.x + 10, this.y + this.height / 2 + 5);
 

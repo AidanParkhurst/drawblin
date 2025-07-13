@@ -39,12 +39,16 @@ class Goblin {
     }
 
     // Called every frame
-    update(delta) {
+    update(delta, draw_lines = true) {
         if (this.simplify_timer >= this.simplify_interval && this.lines.length !== this.last_simplify_count) {
             this.simplify_timer = 0; 
             this.lines = this.simplifyLines(this.lines, 5, 0.5);
             this.last_simplify_count = this.lines.length;
         }
+        if (draw_lines) {
+            this.display_lines(this.lines);
+        }
+
         this.simplify_timer += delta;
         this.check_input();
         this.move();
@@ -65,7 +69,6 @@ class Goblin {
 
         this.display_range(); 
         this.display_cursor();
-        this.display_lines(this.lines);
 
         if (this.speech !== "") {
             this.display_speech();

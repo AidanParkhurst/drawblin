@@ -24,7 +24,7 @@ class Chat {
 
         // overall chat box
         drawingContext.setLineDash([40, 20]); // Set dashed line style
-        stroke(you.color[0], you.color[1], you.color[2], 10);
+        stroke(you.ui_color[0], you.ui_color[1], you.ui_color[2], 10);
         strokeWeight(5);
         fill(0, 0, 0, 0);
         rect(20, windowHeight - this.height - 20, this.width, this.height, 5);
