@@ -97,7 +97,12 @@ class Input {
             }
             this.text = this.placeholder; // Clear the input after sending
             this.active = false; // Deactivate the input box
-        } else if (key.length === 1 && key !== '\n' && key !== '\r' && key !== '\t') { 
+        } else if (key == ESCAPE) { // If escape pressed, deactivate the input box
+            this.active = false;
+            if (you) {
+                you.frozen = false; // Unfreeze the goblin when input is deactivated
+            }
+        } else if (key.length === 1 && key !== '\n' && key !== '\r' && key !== '\t') {
             // Use 'key' instead of keyCode for proper character handling
             // Only add printable characters (single character, not special keys)
             this.text += key;
