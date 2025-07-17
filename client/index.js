@@ -10,14 +10,17 @@ import { ws, connect, sendMessage } from "./network.js";
 let you;
 let chat;
 let goblins = [];
+let header = "";
 let lobby_type = 'freedraw'; // Default lobby type
 let game_state = 'lobby';
 
-// Quick Draw
-// game_state can be 'lobby', 'waiting', 'drawing', or 'voting'
+// Gamemode dependent variables
 let prompt = "";
+let prompt_length = -1;
+let last_winner = -1; // id of last winner 
 let timer = 0;
 let current_artist = -1; // id of the artist who drew the art being voted on
+let results = [];
 
 // drawing vars
 let drawing = false;
@@ -102,16 +105,18 @@ async function start() {
     });
     let quickdraw_portal = new Portal(width / 2 + 400, height / 2 - 200, 150, you.ui_color, "Stand here to join\nQuick Draw", () => {
         you.lines = [];
+        // game_state = 'waiting'; // Set game state to waiting
         connect('quickdraw'); // Connect to the quickdraw game type
         joined = true;
         lobby_type = 'quickdraw'; // Set the lobby type to quickdraw
-        timer = 30;
+        timer = 20;
     });
-    let guessinggame_portal = new Portal(width / 2 - 400, height / 2 - 200, 150, you.ui_color, "Coming soon...\nGuessing Game", () => {
-        // you.lines = [];
-        // connect('guessinggame'); // Connect to the guessing game type
-        // joined = true;
-        // lobby_type = 'guessinggame'; // Set the lobby type to guessinggame
+    let guessinggame_portal = new Portal(width / 2 - 400, height / 2 - 200, 150, you.ui_color, "Stand here to join\nGuessing Game", () => {
+        you.lines = [];
+        connect('guessinggame'); // Connect to the guessing game type
+        joined = true;
+        lobby_type = 'guessinggame'; // Set the lobby type to guessinggame
+        timer = 20;
     });
     portals.push(freedraw_portal, quickdraw_portal, guessinggame_portal);
 
@@ -127,7 +132,17 @@ window.setup = async() => {
     textSize(16);
     start();
 }
-window.windowResized = () => { resizeCanvas(windowWidth, windowHeight); }
+window.windowResized = () => { 
+    resizeCanvas(windowWidth, windowHeight);
+    // Move portals to new positions based on the new window size
+    portals[0].x = width / 2;
+    portals[0].y = height / 2 - 200;
+    portals[1].x = width / 2 + 400;
+    portals[1].y = height / 2 - 200;
+    portals[2].x = width / 2 - 400;
+    portals[2].y = height / 2 - 200;
+    chat.moveInput(windowWidth, windowHeight);
+}
 
 window.draw = () => {
     background(240);
@@ -145,6 +160,8 @@ window.draw = () => {
         freedraw_update(deltaTime);
     } else if (lobby_type === 'quickdraw') {
         quickdraw_update(deltaTime);
+    } else if (lobby_type === 'guessinggame') {
+        guessinggame_update(deltaTime);
     }
 
     if (drawing && mouseIsPressed) {
@@ -174,32 +191,105 @@ function freedraw_update(delta) {
 }
 
 function quickdraw_update(delta) {
-    if (timer > 0) {
-        timer -= delta / 1000; // Convert delta to seconds
-    } else {
-        timer = 0;
-    }
+    timer -= delta / 1000; // Convert delta to seconds
+    timer = Math.max(0, timer); // Ensure timer doesn't go negative
+
     var header = "";
-    if (game_state === 'lobby') { // See all players, all lines, countdown to start
+    if (game_state === 'waiting') { // See all players, all lines, countdown to start
         for (let goblin of goblins) {
             goblin.update(delta);
         }
-        header = `Waiting for players... (${int(timer)} seconds left)`;
+        header = `Waiting for players... (${int(timer)} seconds)`;
+    } else if (game_state === 'drawing') { // See only you and your lines, and a header with the prompt and timer
+        you.update(delta);
+        header = `Draw: ${prompt} (${int(timer)} seconds)`;
+    } else if (game_state === 'pre-voting') {
+        for (let goblin of goblins) {
+            goblin.update(delta, false); // Don't draw lines yet
+        }
+        header = `Drawing time's up! Get ready to vote.`;
     } else if (game_state === 'voting') { // See all players, only the current artist's lines, and a header to vote
         for (let goblin of goblins) {
             if (goblin.id === current_artist) {
-                goblin.update(delta); // Don't draw lines for the current artist
+                goblin.update(delta); // Draw lines for the current artist
             } else {
                 goblin.update(delta, false);
             }
         }
         // TODO vote ui instead of header?
-        header = `Rate this drawing by ${current_artist}.`; // TODO: name instead of id
-    } else if (game_state === 'drawing') { // See only you and your lines, and a header with the prompt and timer
-        you.update(delta);
-        header = `Draw: ${prompt} (${int(timer)} seconds)`;
+        header = `Say your rating (1-5) for this drawing!`;
+    } else if (game_state === 'finished') { // See all players, winner's lines, and a header with the results
+        last_winner = (goblins.find(g => g.id === results[0]?.artistId))?.id || -1; // Get the last winner's id
+        for (let goblin of goblins) {
+            if (last_winner !== -1 && goblin.id === last_winner) {
+                goblin.update(delta); // Draw lines for the winning artist
+            } else {
+                goblin.update(delta, false); // Don't draw lines for others
+            }
+        }
+        header = `Winner: ${last_winner !== -1 ? last_winner : "No winner"}!`;
     }
-    
+
+    push();
+    fill(you.ui_color[0], you.ui_color[1], you.ui_color[2], 150);
+    textAlign(CENTER);
+    textSize(24);
+    text(header, width / 2, 50); // Draw the header at the top center
+    pop();
+}
+
+function guessinggame_update(delta) {
+    timer -= delta / 1000; // Convert delta to seconds
+    timer = Math.max(0, timer); // Ensure timer doesn't go negative
+    var header = "";
+    if (game_state === 'waiting') { // See all players, all lines, countdown
+        for (let goblin of goblins) {
+            goblin.update(delta);
+        }
+        header = `Waiting for players... (${int(timer)} seconds)`;
+    }
+    else if (game_state === 'drawing') { // See current artist's lines, header with underscores of the prompt length, and timer
+        for (let goblin of goblins) {
+            if (goblin.id === current_artist) {
+                goblin.update(delta);
+            } else {
+                goblin.update(delta, false);
+            }
+        }
+        if (you.id === current_artist) {
+            header = `Draw: ${prompt} (${int(timer)} seconds)`;
+        } else {
+            header = `${"_ ".repeat(prompt_length)}(${int(timer)} seconds)`;
+        }
+    }
+    else if (game_state === 'reveal') { // See all players, current artist's lines, and a header with the prompt
+        for (let goblin of goblins) {
+            if (goblin.id === current_artist) {
+                goblin.update(delta);
+            } else {
+                goblin.update(delta, false);
+            }
+        }
+        header = `The prompt was: ${prompt}!`;
+    }
+    else if (game_state === 'scoreboard') { // See all players, and a header with the scores
+        // Draw the scoreboard table, each row is colored by the goblin's color
+        for (let result of results) {
+            var artist = goblins.find(g => g.id === result.userId);
+            if (artist) {
+                push();
+                fill(artist.color[0], artist.color[1], artist.color[2]);
+                textAlign(CENTER);
+                text(`${artist.id}: ${result.score}`, windowWidth / 2, 100 + results.indexOf(result) * 20);
+                pop();
+            }
+        }
+
+        for (let goblin of goblins) {
+            goblin.update(delta); 
+        }
+    }
+
     push();
     fill(you.ui_color[0], you.ui_color[1], you.ui_color[2], 150);
     textAlign(CENTER);
@@ -224,7 +314,7 @@ function drawTitle() {
 window.mousePressed = () => {
     hasInput = true; // Set hasInput to true when the user clicks
     if (chat.input.contains(mouseX, mouseY)) return;
-    if (game_state === 'voting' || game_state === 'waiting') {
+    if (game_state === 'voting' || game_state === 'pre-voting') {
         return;
     }
     drawing = true;
@@ -308,29 +398,73 @@ function onmessage(event) {
             }
             break;
 
-        case "game_start":
-            // Handle game start for quickdraw
-            game_state = 'drawing';
-            prompt = data.prompt;
-            timer = data.time;
-            for (let goblin of goblins) {
-                goblin.lines = []; // Clear lines for all goblins
+        case "game_state":
+            if (lobby_type === 'quickdraw') {
+                if (data.state === 'waiting') {
+                    if (game_state === 'finished' && last_winner !== -1) { // game restarted, clear all drawings except for the winner
+                        for (let goblin of goblins) {
+                            if (goblin.id !== last_winner) {
+                                goblin.lines = []; // Clear lines for all except the winner
+                            }
+                        }
+                    }
+                    timer = data.time;
+
+                } else if (data.state === 'drawing') {
+                    if (game_state !== 'drawing') { // just entered the drawing state, clear previous drawings
+                        for (let goblin of goblins) {
+                            goblin.lines = [];
+                        }
+                    }
+                    prompt = data.prompt;
+                    timer = data.time;
+
+                } else if (data.state === 'pre-voting') {
+                    timer = data.time;
+
+                } else if (data.state === 'voting') {
+                    current_artist = data.artistId; // Set the current artist for voting
+                    timer = data.time;
+
+                } else if (data.state === 'finished') {
+                    timer = data.time;
+                    results = data.results;
+                }
+
+                game_state = data.state;
             }
-            break;
-        
-        case "drawing_finished":
-            // Handle drawing finished for quickdraw
-            game_state = 'waiting';
-            current_artist = data.artistId;
-            prompt = data.prompt;
-            timer = data.time;
-            break;
-        
-        case "voting_start":
-            // Handle voting start for quickdraw
-            game_state = 'voting';
-            current_artist = data.artistId;
-            timer = data.time;
+            else if (lobby_type === 'guessinggame') {
+                if (data.state === 'waiting') {
+                    timer = data.time;
+                } else if (data.state === 'drawing') {
+                    current_artist = data.artistId;
+                    // if you are the artist, you received the prompt
+                    if (you.id === current_artist) {
+                        if (game_state !== 'drawing') { // just entered the drawing state, clear previous drawings
+                            you.lines = []; // Clear previous lines for the new drawing
+                        }
+                        prompt = data.prompt;
+                    } else {
+                        // otherwise you just receive the length
+                        prompt_length = data.prompt_length;
+                    }
+                    timer = data.time;
+                } else if (data.state === 'reveal') {
+                    prompt = data.prompt;
+                    current_artist = data.artistId;
+                    timer = data.time;
+                } else if (data.state === 'scoreboard') {
+                    if (game_state !== 'scoreboard') { // just entered the scoreboard state, clear previous drawings
+                        for (let goblin of goblins) {
+                            goblin.lines = []; // Clear lines for all players
+                        }
+                    }
+                    results = data.scores; // Array of { userId, score }
+                    timer = data.time;
+                }
+                game_state = data.state;
+            }
+
             break;
     }
 }

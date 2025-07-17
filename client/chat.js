@@ -41,6 +41,13 @@ class Chat {
 
         pop();
     }
+
+    moveInput(windowWidth, windowHeight) {
+        // Move the input box to the bottom of the chat box
+        this.input.x = 20;
+        this.input.y = windowHeight - this.height + (this.height - 60);
+        this.input.width = this.width;
+    }
 }
 
 export default Chat;

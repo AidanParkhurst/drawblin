@@ -33,6 +33,14 @@ class Lobby {
         }
     }
 
+    sendTo(socket, message) {
+        if (socket.readyState === socket.OPEN) {
+            socket.send(JSON.stringify(message));
+        } else {
+            console.error("Socket is not open. Unable to send message.");
+        }
+    }
+
     // Handle incoming messages - can be overridden by subclasses
     handleMessage(socket, message) {
         // Handle different message types
