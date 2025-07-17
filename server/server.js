@@ -129,7 +129,9 @@ wss.on('connection', (socket, request) => {
                 
                 // Clean up empty lobbies (optional - you might want to keep them for a while)
                 if (lobby.clients.size === 0) {
-                    lobby.stopGameLoop(); // Stop any ongoing game loop
+                    if (lobby.gameTimer) {
+                        lobby.stopGameLoop(); // Stop any ongoing game loop
+                    }
                     lobbies.delete(lobbyId);
                     console.log(`Removed empty lobby ${lobbyId}`);
                 }

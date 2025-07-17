@@ -22,6 +22,7 @@ class Goblin {
         this.speed = 2; // Acceleration
         this.velocity = createVector(0, 0); // Current velocity of the player
         this.friction = 0.9; // Friction to slow down the player
+        this.keyStates = {}; // Object to track key states for movement
         this.input = createVector(0, 0); // Input vector for movement
         this.frozen = false;
 
@@ -50,8 +51,10 @@ class Goblin {
         }
 
         this.simplify_timer += delta;
-        this.check_input();
-        this.move();
+        if(this.local) {
+            this.check_input();
+            this.move();
+        }
         this.display();
 
         // TODO: Point the goblin's pen at the cursor instead
@@ -170,7 +173,6 @@ class Goblin {
     }
 
     move() {
-        if (!this.local) return; // Only move if this goblin is controlled by the local player
         // Update velocity based on input
         if (this.input.x !== 0 || this.input.y !== 0) {
             // Calculate the movement vector based on input, speed, and delta time
@@ -195,25 +197,24 @@ class Goblin {
     }
 
     check_input() {
-        if (this.frozen) {
+        if (this.frozen || !focused) {
             this.input.x = 0; // Reset input if frozen
             this.input.y = 0;
             return; // If the goblin is frozen, do not process input
         }
-        if (keyIsDown('a')) { // 'A' key for left movement
-            this.input.x = -1;
-        } else if (keyIsDown('d')) { // 'D' key for right movement
-            this.input.x = 1;
-        } else {
-            this.input.x = 0;
+        this.input.x = 0;
+        if (this.keyStates['a']) { // 'A' key for left movement
+            this.input.x -= 1;
+        }
+        if (this.keyStates['d']) { // 'D' key for right movement
+            this.input.x += 1;
         }
 
-        if (keyIsDown('w')) { // 'W' key for up movement
-            this.input.y = -1;
-        } else if (keyIsDown('s')) { // 'S' key for down movement
-            this.input.y = 1;
-        } else {
-            this.input.y = 0;
+        this.input.y = 0;
+        if (this.keyStates['w']) { // 'W' key for up movement
+            this.input.y -= 1;
+        } else if (this.keyStates['s']) { // 'S' key for down movement
+            this.input.y += 1;
         }
     }
 

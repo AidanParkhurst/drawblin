@@ -37,6 +37,7 @@ class QuickDrawLobby extends Lobby {
     }
     
     tick() {
+        if (!this.clients || this.clients.size === 0) return;
         this.timer -= this.tickrate / 1000; // Convert ms to seconds and countdown
         if (this.gameState === 'waiting') {
             // Start the game when we have enough players or after waiting time

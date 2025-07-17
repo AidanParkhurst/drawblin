@@ -336,6 +336,22 @@ window.keyPressed = () => {
     chat.input.keyPressed(keyCode);
 }
 
+window.addEventListener('keydown', (event) => {
+    you.keyStates[event.key] = true;
+});
+window.addEventListener('keyup', (event) => {
+    you.keyStates[event.key] = false; // Reset the key state when the key is
+});
+
+window.addEventListener('blur', () => {
+    // Reset the key states when the window loses focus
+    for (let k in you.keyStates) {
+        you.keyStates[k] = false;
+    }
+    you.input.x = 0; // Reset input to prevent movement when focus is regained
+    you.input.y = 0; // Reset input to prevent movement when focus is regained
+});
+
 // -- Networking Setup --
 function onopen() {
     console.log("WebSocket connection established");
