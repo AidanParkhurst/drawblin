@@ -5,6 +5,7 @@ import Portal from "./portal.js";
 import Line from "./line.js";
 import Chat from "./chat.js";
 import { ws, connect, sendMessage } from "./network.js";
+import { assets } from "./assets.js";
 
 // -- Game State Initialization --
 let you;
@@ -90,8 +91,8 @@ function calculateUIColor(color, backgroundColor) {
 }
 
 async function start() {
-    you = new Goblin(width / 2, height / 2, 50, [random(255), random(255), random(255)], true);
-    
+    you = new Goblin(width / 2, height / 2, [random(255), random(255), random(255)], true, -1, random(['manny', 'stanley', 'ricky', 'blimp'])); // Create the local goblin
+
     // Calculate UI color based on contrast against background (240, 240, 240)
     you.ui_color = calculateUIColor(you.color, [240, 240, 240]);
     
@@ -125,7 +126,9 @@ async function start() {
 
 
 // -- P5 Initialization --
+
 window.setup = async() => {
+    await assets.preloadAssets(); // Preload all assets
     createCanvas(windowWidth, windowHeight);
     ellipseMode(CENTER);
     textFont('Verdana');
@@ -383,7 +386,7 @@ function onmessage(event) {
             const goblin = goblins.find(g => g.id === data.goblin.id);
             if (!goblin) {
                 // If the goblin doesn't exist, create a new one
-                goblins.push(new Goblin(data.goblin.x, data.goblin.y, data.goblin.size, data.goblin.color, false, data.goblin.id));
+                goblins.push(new Goblin(data.goblin.x, data.goblin.y, data.goblin.color, false, data.goblin.id, data.goblin.shape));
                 return;
             }
             if (goblin) {

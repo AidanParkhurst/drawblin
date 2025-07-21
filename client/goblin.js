@@ -1,14 +1,15 @@
 import Line from './line.js';
+import {assets} from './assets.js'; // Import assets for goblin sprites
 
 class Goblin {
 
-    constructor(x, y, size, color, local = false, id = -1) {
+    constructor(x, y, color, local = false, id = -1, shape = 'manny') {
         this.local = local; // Indicates if this goblin is controlled by the local player
         this.id = id == -1 ? random(1000000) : id; // Unique ID for the goblin, can be used for networking
         this.x = x;
         this.y = y;
-        this.size = size;
         this.color = color;
+        this.flip = false;
 
         this.cursor = createVector(x, y); // Create a cursor for the goblin
         this.cursor_range = 200; // Range within which the cursor can move
@@ -29,6 +30,30 @@ class Goblin {
         this.speech = ""; // Speech text for the goblin
         this.speech_timer = 0; // Timer for speech display
         this.speech_duration = 3000; // Duration to display speech in milliseconds
+        
+        // Animation properties
+        this.shape = shape;
+        this.size;
+        switch (this.shape) {
+            case 'manny':
+                this.size = 50;
+                break;
+            case 'stanley':
+                this.size = 40;
+                break;
+            case 'ricky':
+                this.size = 45;
+                break;
+            case 'blimp':
+                this.size = 40;
+                break;
+            default:
+                this.size = 50; // Default size
+        }
+        this.walk_cycle = 0; // Walking animation cycle counter
+        this.walk_speed = 0.3; // Speed of the walking animation
+        this.bounce_height = 3; // How high the goblin bounces
+        this.tilt_angle = 5; // Maximum tilt angle in degrees
     }
 
     // Helper function to compare colors (handles both arrays and primitives)
@@ -55,6 +80,14 @@ class Goblin {
             this.check_input();
             this.move();
         }
+        
+        // Update walking animation cycle when moving
+        if (this.velocity.mag() > 1) { // Only animate when actually moving
+            this.walk_cycle += this.walk_speed;
+        } else {
+            this.walk_cycle = 0; // Reset cycle when not moving
+        }
+        
         this.display();
 
         // TODO: Point the goblin's pen at the cursor instead
@@ -84,11 +117,56 @@ class Goblin {
     }
     
     display() {
-        push();
+        if (this.cursor.x > this.x) {
+            this.flip = false; // Facing right
+        } else if (this.cursor.x < this.x) {
+            this.flip = true; // Facing left
+        }
 
-        fill(this.color);
+        // Calculate animation offsets
+        let bounceOffset = 0;
+        let tiltOffset = 0;
+        
+        if (this.velocity.mag() > 0.1) { // Only animate when moving
+            // Bounce up and down using sine wave
+            bounceOffset = sin(this.walk_cycle * 2) * this.bounce_height;
+            
+            // Tilt left and right using sine wave (offset phase for natural look)
+            tiltOffset = sin(this.walk_cycle * 2 + PI/4) * this.tilt_angle * (this.velocity.mag() / this.max_speed);
+        }
+
+        push();
+        imageMode(CENTER);
+        tint(this.color[0], this.color[1], this.color[2]);
         noStroke();
-        ellipse(this.x, this.y, this.size);
+
+        translate(this.x, this.y);
+        // Empty hand just static next to goblin's back
+        let empty_hand_x = this.flip ? 30 : -30;
+        image(assets.sprites["empty_hand"], empty_hand_x, 10, 10, 10);
+        let brush_vector = createVector(this.cursor.x - this.x, this.cursor.y - this.y);
+        brush_vector.setMag(25); // Limit to max distance of 30 pixels
+        push();
+        translate(brush_vector.x, brush_vector.y);
+        rotate(atan2(brush_vector.y, brush_vector.x)); // Rotate towards cursor
+        image(assets.sprites["brush_hand"], 0, 0, 10, 10);
+        image(assets.sprites["brush"], 15, -8, 25, 15);
+        pop();
+
+        translate(0, bounceOffset); // Apply bounce offset
+        
+        // Apply tilt rotation
+        rotate(radians(tiltOffset));
+        
+        if (this.flip) {
+            scale(-1, 1); // Flip horizontally
+        }
+        image(assets.sprites[this.shape], 0, 0, this.size, this.size * (assets.sprites[this.shape].height / assets.sprites[this.shape].width));
+
+        // OG: just a circle
+        // fill(this.color);
+        // noStroke();
+        // ellipse(this.x, this.y, this.size);
 
         pop();
     }
