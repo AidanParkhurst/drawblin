@@ -1,14 +1,14 @@
 class Assets {
     constructor() {
         this.assets = {
-            "brush_hand": "./assets/brushhand.png",
-            "empty_hand": "./assets/emptyhand.png",
-            "brush": "./assets/brush.png",
-            "crown": "./assets/crown.png",
-            "manny": "./assets/goblins/manny.png",
-            "stanley": "./assets/goblins/stanley.png",
-            "ricky": "./assets/goblins/ricky.png",
-            "blimp": "./assets/goblins/blimp.png",
+            "brush_hand": "assets/brushhand.png",
+            "empty_hand": "assets/emptyhand.png",
+            "brush": "assets/brush.png",
+            "crown": "assets/crown.png",
+            "manny": "assets/goblins/manny.png",
+            "stanley": "assets/goblins/stanley.png",
+            "ricky": "assets/goblins/ricky.png",
+            "blimp": "assets/goblins/blimp.png",
         };
         this.sprites = {};
     }
