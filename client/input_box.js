@@ -27,7 +27,7 @@ class Input {
             cursor('text'); // Change cursor to text input style
         } else {
             this.hover = false; // Reset hover state if mouse is not over the input box
-            cursor(ARROW);
+            // Don't reset cursor here - let other UI elements handle it
             if (mouseIsPressed && this.active) {
                 this.active = false; // Deactivate the input box on mouse press outside
                 if (you) {

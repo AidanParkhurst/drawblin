@@ -4,12 +4,16 @@ import Goblin from "./goblin.js";
 import Portal from "./portal.js";
 import Line from "./line.js";
 import Chat from "./chat.js";
+import PlayerList from "./players.js";
+import Toolbelt from "./toolbelt.js";
 import { ws, connect, sendMessage } from "./network.js";
 import { assets } from "./assets.js";
 
 // -- Game State Initialization --
 let you;
 let chat;
+let playerList;
+let toolbelt;
 let goblins = [];
 let header = "";
 let lobby_type = 'freedraw'; // Default lobby type
@@ -90,6 +94,22 @@ function calculateUIColor(color, backgroundColor) {
     return [...color]; // Return a copy to avoid reference issues
 }
 
+// Line intersection utility function for eraser
+function lineIntersect(line1Start, line1End, line2Start, line2End) {
+    const x1 = line1Start.x, y1 = line1Start.y;
+    const x2 = line1End.x, y2 = line1End.y;
+    const x3 = line2Start.x, y3 = line2Start.y;
+    const x4 = line2End.x, y4 = line2End.y;
+    
+    const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+    if (denom === 0) return false; // Lines are parallel
+    
+    const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+    const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+    
+    return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+}
+
 async function start() {
     you = new Goblin(width / 2, height / 2, [random(255), random(255), random(255)], true, -1, random(['manny', 'stanley', 'ricky', 'blimp'])); // Create the local goblin
 
@@ -98,6 +118,9 @@ async function start() {
     
     goblins.push(you);
     chat = new Chat(); 
+    playerList = new PlayerList(50, 20); // Create the player list with default circle size and spacing
+    toolbelt = new Toolbelt(); // Create the toolbelt
+
     let freedraw_portal = new Portal(width / 2, height / 2 - 200, 150, you.ui_color, "Stand here to join\nFree Draw", () => {
         you.lines = [];
         connect('freedraw'); // Connect to the freedraw game type
@@ -129,9 +152,13 @@ async function start() {
 
 window.setup = async() => {
     await assets.preloadAssets(); // Preload all assets
-    createCanvas(windowWidth, windowHeight);
+    let canvas = createCanvas(windowWidth, windowHeight);
+    
+    // Disable default drag behavior on canvas
+    canvas.elt.addEventListener('dragstart', (e) => e.preventDefault());
+    
     ellipseMode(CENTER);
-    textFont('Verdana');
+    textFont(assets.font);
     textSize(16);
     start();
 }
@@ -149,6 +176,8 @@ window.windowResized = () => {
 
 window.draw = () => {
     background(240);
+    cursor(ARROW); // Set default cursor at the beginning of each frame
+    
     if (!hasInput) {
         drawTitle();
     } else if (!joined) {
@@ -157,7 +186,6 @@ window.draw = () => {
         }
     }
 
-    chat.update();
 
     if (lobby_type === 'freedraw') {
         freedraw_update(deltaTime);
@@ -167,10 +195,32 @@ window.draw = () => {
         guessinggame_update(deltaTime);
     }
 
+    chat.update();
+    playerList.update();
+    toolbelt.update();
+
     if (drawing && mouseIsPressed) {
         if (dist(you.cursor.x, you.cursor.y, last_mouse.x, last_mouse.y) < line_granularity) return; // Skip if the mouse hasn't moved enough
-        var l = new Line(createVector(last_mouse.x, last_mouse.y), createVector(you.cursor.x, you.cursor.y), you.color, 5);
-        you.lines.push(l); // Store the line in the goblin's lines array
+        
+        if (you.tool === 'eraser') {
+            // Eraser logic: remove lines that intersect with the eraser path
+            const eraserLine = {
+                start: createVector(last_mouse.x, last_mouse.y),
+                end: createVector(you.cursor.x, you.cursor.y)
+            };
+            
+            // Check each line for intersection with eraser path
+            for (let i = you.lines.length - 1; i >= 0; i--) {
+                const line = you.lines[i];
+                if (lineIntersect(eraserLine.start, eraserLine.end, line.start, line.end)) {
+                    you.lines.splice(i, 1); // Remove the intersected line
+                }
+            }
+        } else {
+            // Regular brush/drawing logic
+            var l = new Line(createVector(last_mouse.x, last_mouse.y), createVector(you.cursor.x, you.cursor.y), you.color, 5);
+            you.lines.push(l); // Store the line in the goblin's lines array
+        }
     }
 
     last_mouse = createVector(you.cursor.x, you.cursor.y);
@@ -316,7 +366,12 @@ function drawTitle() {
 
 window.mousePressed = () => {
     hasInput = true; // Set hasInput to true when the user clicks
-    if (chat.input.contains(mouseX, mouseY)) return;
+    
+    // Check if mouse is interacting with any UI elements
+    if (chat.isMouseInteracting() || playerList.isMouseInteracting() || toolbelt.isMouseInteracting()) {
+        return; // Don't start drawing if interacting with UI
+    }
+    
     if (game_state === 'voting' || game_state === 'pre-voting') {
         return;
     }
@@ -394,6 +449,8 @@ function onmessage(event) {
                 goblin.x = data.goblin.x;
                 goblin.y = data.goblin.y;
                 goblin.cursor = createVector(data.goblin.cursor._values[0], data.goblin.cursor._values[1]);
+                goblin.color = data.goblin.color;
+                goblin.tool = data.goblin.tool || 'brush'; // Update tool, default to brush if not provided
                 if (goblin.lines.length !== data.goblin.lines.length) {
                     goblin.lines = [];
                     for (let i = 0; i < data.goblin.lines.length; i++) {

@@ -1,5 +1,6 @@
 import Input from "./input_box.js";
 import { you, goblins } from "./index.js"; // Import the goblin object
+import {assets} from "./assets.js"; // Import assets for the chat
 
 class Chat {
     constructor(height = 200, width = 400) {
@@ -47,6 +48,11 @@ class Chat {
         this.input.x = 20;
         this.input.y = windowHeight - this.height + (this.height - 60);
         this.input.width = this.width;
+    }
+
+    // Check if mouse is interacting with chat UI elements
+    isMouseInteracting() {
+        return this.input.contains(mouseX, mouseY);
     }
 }
 

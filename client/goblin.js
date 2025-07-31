@@ -27,6 +27,9 @@ class Goblin {
         this.input = createVector(0, 0); // Input vector for movement
         this.frozen = false;
 
+        // Tool system
+        this.tool = 'brush'; // Current tool being used
+
         this.speech = ""; // Speech text for the goblin
         this.speech_timer = 0; // Timer for speech display
         this.speech_duration = 3000; // Duration to display speech in milliseconds

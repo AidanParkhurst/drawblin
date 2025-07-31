@@ -131,6 +131,9 @@ class GuessingGameLobby extends Lobby {
                         this.broadcast({ type: "game_state", state: "reveal", prompt: this.prompt, artistId: this.users.get(this.currentArtist).id, time: this.revealTime });
                         console.log(`Guessing game lobby ${this.id} all guesses correct, revealing prompt: ${this.prompt}`);
                     }
+                } else {
+                    // Incorrect guess, just broadcast the chat message
+                    this.broadcast({ type: "chat", userId: message.userId, content: message.content });
                 }
             } else {
                 // Normal chat when not in guessing phase
