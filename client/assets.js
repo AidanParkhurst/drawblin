@@ -27,7 +27,7 @@ class Assets {
             "grubby": grubbyImg,
         };
         this.sprites = {};
-        this.font = 'assets/Neucha-Regular.ttf'; // Default font
+        this.font = neuchaFont; // Default font
     }
 
     async preloadAssets() {
