@@ -38,18 +38,21 @@ class Goblin {
         this.shape = shape;
         this.size;
         switch (this.shape) {
-            case 'manny':
-                this.size = 50;
+            case 'hippo':
+                this.size = 35;
                 break;
+            // These 4 are kinda big, so they have a smaller size
+            case 'blimp':
             case 'stanley':
+            case 'grubby':
                 this.size = 40;
                 break;
+            // Ricky we specifically want to be smaller, even though he is normal
             case 'ricky':
                 this.size = 45;
                 break;
-            case 'blimp':
-                this.size = 40;
-                break;
+            // By default, 50
+            case 'manny':
             default:
                 this.size = 50; // Default size
         }
@@ -153,7 +156,12 @@ class Goblin {
         translate(brush_vector.x, brush_vector.y);
         rotate(atan2(brush_vector.y, brush_vector.x)); // Rotate towards cursor
         image(assets.sprites["brush_hand"], 0, 0, 10, 10);
-        image(assets.sprites["brush"], 15, -8, 25, 15);
+        if (this.tool === 'brush') {
+            image(assets.sprites["brush"], 17, -8, 25, 15);
+        } else if (this.tool === 'eraser') {
+            image(assets.sprites["eraser"], 15, -8, 25, 15);
+        }
+
         pop();
 
         translate(0, bounceOffset); // Apply bounce offset
@@ -284,17 +292,17 @@ class Goblin {
             return; // If the goblin is frozen, do not process input
         }
         this.input.x = 0;
-        if (this.keyStates['a']) { // 'A' key for left movement
+        if (this.keyStates['a'] || this.keyStates['ArrowLeft']) { // 'A' key for left movement
             this.input.x -= 1;
         }
-        if (this.keyStates['d']) { // 'D' key for right movement
+        if (this.keyStates['d'] || this.keyStates['ArrowRight']) { // 'D' key for right movement
             this.input.x += 1;
         }
 
         this.input.y = 0;
-        if (this.keyStates['w']) { // 'W' key for up movement
+        if (this.keyStates['w'] || this.keyStates['ArrowUp']) { // 'W' key for up movement
             this.input.y -= 1;
-        } else if (this.keyStates['s']) { // 'S' key for down movement
+        } else if (this.keyStates['s'] || this.keyStates['ArrowDown']) { // 'S' key for down movement
             this.input.y += 1;
         }
     }

@@ -1,15 +1,18 @@
 import { you, goblins } from './index.js';
 import { assets } from './assets.js';
-import { sendMessage } from './network.js'; 
+import { sendMessage } from './network.js';
+import { calculateUIColor } from './colors.js'; 
 
 class ProfileDisplay {
-    constructor(width = 500, height = 400) {
+    constructor(width = 300, height = 200) {
         this.width = width;
         this.height = height;
-        this.x = (windowWidth - width) / 2; // Center horizontally
-        this.y = (windowHeight - height) / 2; // Center vertically
+        this.x = 0; // Will be set based on player position
+        this.y = 0; // Will be set based on player position
         this.visible = false;
         this.targetGoblin = null;
+        this.playerX = 0; // Position of the player icon that was clicked
+        this.playerY = 0; // Position of the player icon that was clicked
         
         // Color palette setup
         this.colorPalette = [
@@ -31,19 +34,21 @@ class ProfileDisplay {
             [0, 0, 0]        // Black
         ];
         
-        this.colorSize = 30;
-        this.colorSpacing = 10;
+        this.colorSize = 20;
+        this.colorSpacing = 5;
         this.colorsPerRow = 4;
         this.colorStartX = this.width * 0.55; // Start colors on right side
-        this.colorStartY = 120;
+        this.colorStartY = 50;
         
         this.hoveredColor = -1;
     }
     
-    show(goblinId) {
+    show(goblinId, playerX, playerY) {
         this.targetGoblin = goblins.find(g => g.id === goblinId) || you;
+        this.playerX = playerX;
+        this.playerY = playerY;
         this.visible = true;
-        this.updatePosition(); // Update position in case window was resized
+        this.updatePosition(); // Update position based on player icon location
     }
     
     hide() {
@@ -52,8 +57,14 @@ class ProfileDisplay {
     }
     
     updatePosition() {
-        this.x = (windowWidth - this.width) / 2;
-        this.y = (windowHeight - this.height) / 2;
+        // Position the profile display above the player icon
+        this.x = this.playerX - this.width / 2;
+        this.y = this.playerY - this.height - 40; // 20px gap above the player icon
+        
+        // Keep the profile display within screen bounds
+        if (this.x < 10) this.x = 10;
+        if (this.x + this.width > windowWidth - 10) this.x = windowWidth - this.width - 10;
+        if (this.y < 10) this.y = this.playerY + 60; // Show below if no room above
     }
     
     update() {
@@ -115,64 +126,33 @@ class ProfileDisplay {
             
             // If this is the local player, also update their UI color
             if (this.targetGoblin === you) {
-                you.ui_color = this.calculateUIColor(newColor, [240, 240, 240]);
+                you.ui_color = calculateUIColor(newColor, [240, 240, 240]);
             }
             
             sendMessage({ type: 'update', goblin: this.targetGoblin });
         }
     }
     
-    // Copy of the calculateUIColor function from index.js for consistency
-    calculateUIColor(goblinColor, backgroundColor) {
-        const luminance1 = this.getLuminance(goblinColor);
-        const luminance2 = this.getLuminance(backgroundColor);
-        
-        const contrast = (Math.max(luminance1, luminance2) + 0.05) / 
-                        (Math.min(luminance1, luminance2) + 0.05);
-        
-        let darkenedColor = this.darkenColor(goblinColor, 0.6);
-        
-        // If contrast is still too low, darken further
-        if (contrast < 3) {
-            darkenedColor = this.darkenColor(darkenedColor, 0.8);
-        }
-        
-        return darkenedColor;
-    }
-    
-    getLuminance(color) {
-        const [r, g, b] = color.map(c => {
-            c = c / 255;
-            return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-        });
-        
-        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    }
-    
-    darkenColor(color, factor = 0.6) {
-        return color.map(c => Math.floor(c * factor));
-    }
-    
     display() {
-        if (!this.visible || !this.targetGoblin) return;
+        if (!this.visible || !this.targetGoblin || you !== this.targetGoblin) return;
         
         push();
         
         // Draw the main rectangle with dotted border (same style as chat and other UI)
         fill(240); 
-        drawingContext.setLineDash([40, 20]); // Set dashed line style
+        drawingContext.setLineDash([30, 20]); // Set dashed line style
         stroke(you.ui_color[0], you.ui_color[1], you.ui_color[2], 100);
-        strokeWeight(5);
-        rect(this.x, this.y, this.width, this.height, 15); // 15px rounded corners
+        strokeWeight(4);
+        rect(this.x, this.y, this.width, this.height, 10); // 10px rounded corners
         
         // Reset line dash for other elements
         drawingContext.setLineDash([]);
         noStroke();
         
         // Draw goblin sprite on the left side
-        const spriteX = this.x + 100;
+        const spriteX = this.x + 60;
         const spriteY = this.y + this.height / 2;
-        const spriteSize = 120;
+        const spriteSize = 70;
         
         if (assets.sprites && assets.sprites[this.targetGoblin.shape]) {
             const sprite = assets.sprites[this.targetGoblin.shape];
@@ -187,11 +167,11 @@ class ProfileDisplay {
             
             // Calculate scale factor based on sprite size ratio
             // In goblin.js, hands are sized relative to goblin.size (typically 40-50px)
-            // Here spriteSize is 120px, so scale factor is approximately 120/45 = 2.67
+            // Here spriteSize is 70px, so scale factor is approximately 70/45 = 1.56
             const scaleFactor = spriteSize / 45; // Using 45 as average goblin size
-            const handSize = 10 * scaleFactor; // Scale hand size proportionally
-            const brushWidth = 25 * scaleFactor;
-            const brushHeight = 15 * scaleFactor;
+            const handSize = 7 * scaleFactor; // Scale hand size proportionally
+            const brushWidth = 18 * scaleFactor;
+            const brushHeight = 11 * scaleFactor;
             
             // Draw hands like in goblin.js
             // Empty hand (static, behind the goblin) - scaled positioning
@@ -223,8 +203,8 @@ class ProfileDisplay {
         // Draw color palette title
         fill(you.ui_color[0], you.ui_color[1], you.ui_color[2]);
         textAlign(LEFT, TOP);
-        textSize(20);
-        text("Choose Color:", this.x + this.colorStartX, this.y + 60);
+        textSize(16);
+        text("Choose Color:", this.x + this.colorStartX, this.y + 20);
         
         // Draw color palette
         for (let i = 0; i < this.colorPalette.length; i++) {
@@ -254,16 +234,16 @@ class ProfileDisplay {
             
             ellipse(colorX + this.colorSize/2, colorY + this.colorSize/2, this.colorSize, this.colorSize);
         }
-        
+        noStroke(); 
         // Draw player name/ID
         fill(you.ui_color[0], you.ui_color[1], you.ui_color[2]);
-        text(`Player ${this.targetGoblin.id}`, this.x + 20, this.y + 60);
-        
+        text(`Player ${Math.round(this.targetGoblin.id)}`, this.x + 20, this.y + 20);
+
         // Draw close instruction
         textAlign(CENTER, BOTTOM);
-        textSize(16);
+        textSize(12);
         fill(you.ui_color[0], you.ui_color[1], you.ui_color[2], 200);
-        text("Press Escape or click outside to close", this.x + this.width/2, this.y + this.height - 10);
+        text("Press Escape or click outside to close", this.x + this.width/2, this.y + this.height - 5);
         
         pop();
     }

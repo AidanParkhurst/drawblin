@@ -19,8 +19,15 @@ class PlayerList {
             if (hovered_goblin) {
                 cursor('pointer'); // Change cursor to pointer when hovering over a goblin
                 if (mouseIsPressed) {
-                    // Open profile display for the clicked goblin
-                    this.profileDisplay.show(hovered_goblin.id);
+                    // Calculate the position of the clicked goblin's icon
+                    const goblinIndex = goblins.indexOf(hovered_goblin);
+                    const totalWidth = (goblins.length * this.circleSize) + ((goblins.length - 1) * this.spacing);
+                    const startX = (windowWidth - totalWidth) / 2;
+                    const playerIconX = startX + (goblinIndex * (this.circleSize + this.spacing));
+                    const playerIconY = windowHeight - 20 - (this.circleSize / 2);
+                    
+                    // Open profile display for the clicked goblin at the icon position
+                    this.profileDisplay.show(hovered_goblin.id, playerIconX, playerIconY);
                 }
             }
             // Don't reset cursor here - let other UI elements handle it

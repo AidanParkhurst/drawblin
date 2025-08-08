@@ -8,6 +8,7 @@ import PlayerList from "./players.js";
 import Toolbelt from "./toolbelt.js";
 import { ws, connect, sendMessage } from "./network.js";
 import { assets } from "./assets.js";
+import { calculateUIColor } from "./colors.js";
 
 // -- Game State Initialization --
 let you;
@@ -42,58 +43,6 @@ let joined = false; // Track if the user has joined a game
 
 let hasInput = false;
 
-// Calculate relative luminance for contrast checking
-function getLuminance(color) {
-    // Normalize RGB values to 0-1 range
-    const [r, g, b] = color.map(c => {
-        c = c / 255;
-        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-    });
-    
-    // Calculate luminance using the standard formula
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-// Calculate contrast ratio between two colors
-function getContrastRatio(color1, color2) {
-    const lum1 = getLuminance(color1);
-    const lum2 = getLuminance(color2);
-    
-    const brightest = Math.max(lum1, lum2);
-    const darkest = Math.min(lum1, lum2);
-    
-    return (brightest + 0.05) / (darkest + 0.05);
-}
-
-// Darken a color by a given factor (0-1, where 0 = black, 1 = original)
-function darkenColor(color, factor = 0.6) {
-    return color.map(c => Math.floor(c * factor));
-}
-
-// Calculate appropriate UI color based on contrast
-function calculateUIColor(color, backgroundColor) {
-    const contrastRatio = getContrastRatio(color, backgroundColor);
-    
-    // WCAG AA standard recommends 4.5:1 for normal text
-    // We'll use 3:1 as our threshold for UI elements
-    if (contrastRatio < 3) {
-        // Color doesn't have enough contrast, darken it
-        let darkenedColor = darkenColor(color, 0.6);
-        
-        // Keep darkening until we get good contrast or hit a minimum
-        let attempts = 0;
-        while (getContrastRatio(darkenedColor, backgroundColor) < 3 && attempts < 5) {
-            darkenedColor = darkenColor(darkenedColor, 0.8);
-            attempts++;
-        }
-        
-        return darkenedColor;
-    }
-    
-    // Color has good contrast, use original
-    return [...color]; // Return a copy to avoid reference issues
-}
-
 // Line intersection utility function for eraser
 function lineIntersect(line1Start, line1End, line2Start, line2End) {
     const x1 = line1Start.x, y1 = line1Start.y;
@@ -111,7 +60,7 @@ function lineIntersect(line1Start, line1End, line2Start, line2End) {
 }
 
 async function start() {
-    you = new Goblin(width / 2, height / 2, [random(255), random(255), random(255)], true, -1, random(['manny', 'stanley', 'ricky', 'blimp'])); // Create the local goblin
+    you = new Goblin(width / 2, height / 2, [random(255), random(255), random(255)], true, -1, random(['manny', 'stanley', 'ricky', 'blimp', 'hippo', 'grubby'])); // Create the local goblin
 
     // Calculate UI color based on contrast against background (240, 240, 240)
     you.ui_color = calculateUIColor(you.color, [240, 240, 240]);
@@ -381,7 +330,7 @@ window.mousePressed = () => {
 }
 
 window.mouseReleased = () => {
-    if (drawing && you.lines.length === last_line_count) { // If no new line was added
+    if (drawing && you.lines.length === last_line_count && you.tool !== 'eraser') { // If no new line was added and not using eraser
         var l = new Line(createVector(you.cursor.x, you.cursor.y), createVector(you.cursor.x, you.cursor.y), you.color, 5);
         you.lines.push(l); // Store the line in the goblin's lines array
     }

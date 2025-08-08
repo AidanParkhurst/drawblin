@@ -116,7 +116,8 @@ class Toolbelt {
                     // Use the empty hand asset as eraser icon
                     imageMode(CENTER);
                     const iconSize = this.toolSize * 0.6; // 60% of tool size
-                    image(assets.sprites.empty_hand, centerX, centerY, iconSize, iconSize);
+                    tint(you.color[0], you.color[1], you.color[2]); // Apply goblin's color tint
+                    image(assets.sprites.eraser, centerX, centerY, iconSize, iconSize);
                 } else {
                     // Fallback: draw a simple eraser icon
                     fill(255, 200, 200); // Light pink color for eraser
