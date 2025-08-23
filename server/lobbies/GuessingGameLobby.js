@@ -133,7 +133,7 @@ class GuessingGameLobby extends Lobby {
                     }
                 } else {
                     // Incorrect guess, just broadcast the chat message
-                    this.broadcast({ type: "chat", userId: message.userId, content: message.content });
+                    this.broadcast({ type: "chat", userId: message.userId, content: message.content }, socket);
                 }
             } else {
                 // Normal chat when not in guessing phase
