@@ -2,7 +2,22 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Drawblins</title>
+    <link href="https://fonts.googleapis.com/css2?family=Neucha&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="index.css">
-    <script type="module" src = "index.js"></script>
+    <script type="module" src="auth.js"></script>
+    <script type="module" src="index.js"></script>
 </head>
+<body>
+    <a id="login-button" href="./login.html">Login</a>
+    <div id="account-menu" style="display:none;">
+        <div class="account-menu__name-label">Display name</div>
+        <input id="account-name-input" class="account-menu__input" type="text" maxlength="40" placeholder="Your goblin name" />
+        <div class="account-menu__buttons">
+            <button id="account-save-name" class="account-menu__action">Save</button>
+            <button id="account-signout" class="account-menu__action account-menu__action--danger">Sign out</button>
+        </div>
+    </div>
+</body>
+</html>

@@ -3,13 +3,14 @@ import {assets} from './assets.js'; // Import assets for goblin sprites
 
 class Goblin {
 
-    constructor(x, y, color, local = false, id = -1, shape = 'manny') {
+    constructor(x, y, color, local = false, id = -1, shape = 'manny', name = '') {
         this.local = local; // Indicates if this goblin is controlled by the local player
         this.id = id == -1 ? random(1000000) : id; // Unique ID for the goblin, can be used for networking
         this.x = x;
         this.y = y;
         this.color = color;
         this.flip = false;
+        this.name = name || '';
 
         this.cursor = createVector(x, y); // Create a cursor for the goblin
         this.cursor_range = 200; // Range within which the cursor can move
@@ -71,7 +72,7 @@ class Goblin {
     }
 
     // Called every frame
-    update(delta, draw_lines = true) {
+    update(delta, draw_lines = true, draw_name = false) {
         if (this.simplify_timer >= this.simplify_interval && this.lines.length !== this.last_simplify_count) {
             this.simplify_timer = 0; 
             this.lines = this.simplifyLines(this.lines, 5, 0.5);
@@ -93,8 +94,8 @@ class Goblin {
         } else {
             this.walk_cycle = 0; // Reset cycle when not moving
         }
-        
-        this.display();
+
+        this.display(draw_name);
 
         // TODO: Point the goblin's pen at the cursor instead
         if (this.local){
@@ -122,7 +123,7 @@ class Goblin {
         }
     }
     
-    display() {
+    display(draw_name) {
         if (this.cursor.x > this.x) {
             this.flip = false; // Facing right
         } else if (this.cursor.x < this.x) {
@@ -162,6 +163,7 @@ class Goblin {
             image(assets.sprites["eraser"], 15, -8, 25, 15);
         }
 
+
         pop();
 
         translate(0, bounceOffset); // Apply bounce offset
@@ -169,6 +171,17 @@ class Goblin {
         // Apply tilt rotation
         rotate(radians(tiltOffset));
         
+        // Draw name above goblin if available
+        if (draw_name && this.name) {
+            push();
+            noStroke();
+            fill(this.color[0], this.color[1], this.color[2], 200);
+            textAlign(CENTER, BOTTOM);
+            textSize(14);
+            text(this.name, 0, -50);
+            pop();
+        }
+
         if (this.flip) {
             scale(-1, 1); // Flip horizontally
         }

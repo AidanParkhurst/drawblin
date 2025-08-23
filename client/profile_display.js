@@ -235,9 +235,10 @@ class ProfileDisplay {
             ellipse(colorX + this.colorSize/2, colorY + this.colorSize/2, this.colorSize, this.colorSize);
         }
         noStroke(); 
-        // Draw player name/ID
-        fill(you.ui_color[0], you.ui_color[1], you.ui_color[2]);
-        text(`Player ${Math.round(this.targetGoblin.id)}`, this.x + 20, this.y + 20);
+    // Draw player name (fall back to ID if no name)
+    fill(you.ui_color[0], you.ui_color[1], you.ui_color[2]);
+    const displayName = (this.targetGoblin.name && this.targetGoblin.name.trim()) ? this.targetGoblin.name : `Player ${Math.round(this.targetGoblin.id)}`;
+    text(displayName, this.x + 20, this.y + 20);
 
         // Draw close instruction
         textAlign(CENTER, BOTTOM);

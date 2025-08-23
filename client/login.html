@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login — Drawblins</title>
+    <link rel="stylesheet" href="index.css" />
+    <link rel="stylesheet" href="login.css" />
+  </head>
+  <body class="login-body">
+    <div class="login-card">
+      <h1 class="login-title">Log In</h1>
+      <h3 class="login-subtitle">An account lets you save your work, customize your goblin, and more!</h3>
+      <button id="google" class="btn btn-outline btn-block">Sign in with Google</button>
+
+      <div class="login-separator">
+        <hr /><span>or</span><hr />
+      </div>
+
+      <form id="email-form" class="login-form">
+        <label>Email</label>
+        <input id="email" class="input" type="email" required />
+        <label>Password</label>
+        <input id="password" class="input" type="password" required />
+        <div class="actions">
+          <button id="signin" class="btn btn-primary" type="submit">Sign in</button>
+          <button id="signup" class="btn btn-outline" type="button">Sign up</button>
+        </div>
+      </form>
+
+      <p id="status" class="status"></p>
+
+    </div>
+    
+    <div class="back-link">
+      <a href="./index.html"> &lt;- Back to game</a>
+    </div>
+
+    <script type="module">
+      import auth from './auth.js';
+
+      const status = document.getElementById('status');
+      const setStatus = (msg, color = '#d35400') => {
+        status.textContent = msg || '';
+        status.style.color = color;
+      };
+
+      // Init (safe if not configured)
+      await auth.initAuth();
+      if (!auth.isAuthConfigured()) {
+        setStatus('Auth not configured. Add SUPABASE keys to enable login.');
+      }
+
+      document.getElementById('google').addEventListener('click', async () => {
+        try {
+          setStatus('Redirecting to Google...');
+          const redirectTo = new URL('./login.html', window.location.href).toString();
+          await auth.signInWithGoogle(redirectTo);
+        } catch (e) {
+          setStatus(e.message || 'Google sign-in failed');
+        }
+      });
+
+      const form = document.getElementById('email-form');
+      const emailEl = document.getElementById('email');
+      const passwordEl = document.getElementById('password');
+      const signupBtn = document.getElementById('signup');
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          setStatus('Signing in...');
+          const { error } = await auth.signInWithEmail(emailEl.value, passwordEl.value);
+          if (error) throw error;
+          setStatus('Signed in! Redirecting...', '#2d8a34');
+          setTimeout(() => window.location.assign('./index.html'), 500);
+        } catch (e) {
+          setStatus(e.message || 'Sign in failed');
+        }
+      });
+
+      signupBtn.addEventListener('click', async () => {
+        try {
+          setStatus('Creating account...');
+          const { error } = await auth.signUpWithEmail(emailEl.value, passwordEl.value);
+          if (error) throw error;
+          setStatus('Check your email to confirm your account.', '#2d8a34');
+        } catch (e) {
+          setStatus(e.message || 'Sign up failed');
+        }
+      });
+
+      // Handle post-OAuth redirect
+      window.addEventListener('auth:user-changed', (evt) => {
+        if (evt.detail?.user) {
+          setStatus('Signed in! Redirecting...', '#2d8a34');
+          setTimeout(() => window.location.assign('./index.html'), 500);
+        }
+      });
+    </script>
+  </body>
+  </html>

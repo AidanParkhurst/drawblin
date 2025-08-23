@@ -9,6 +9,9 @@ import Toolbelt from "./toolbelt.js";
 import { ws, connect, sendMessage } from "./network.js";
 import { assets } from "./assets.js";
 import { calculateUIColor } from "./colors.js";
+import { ready as authReady, isAuthConfigured, getUser } from './auth.js';
+import { getProfileName, upsertProfileName } from './auth.js';
+import { generateGoblinName } from './names.js';
 
 // -- Game State Initialization --
 let you;
@@ -60,7 +63,36 @@ function lineIntersect(line1Start, line1End, line2Start, line2End) {
 }
 
 async function start() {
-    you = new Goblin(width / 2, height / 2, [random(255), random(255), random(255)], true, -1, random(['manny', 'stanley', 'ricky', 'blimp', 'hippo', 'grubby'])); // Create the local goblin
+    // Determine name: account name if available; otherwise generate; if account exists but has no name, set a random name in DB
+    let name = '';
+    if (isAuthConfigured()) {
+        await authReady();
+        const user = getUser();
+        if (user) {
+            const existing = await getProfileName();
+            if (existing && existing.trim()) {
+                name = existing.trim();
+            } else {
+                // Account without name yet: generate and save
+                name = generateGoblinName();
+                await upsertProfileName(name);
+            }
+        }
+    }
+    if (!name) {
+        // Guest or no auth configured
+        name = generateGoblinName();
+    }
+
+    you = new Goblin(
+        width / 2,
+        height / 2,
+        [random(255), random(255), random(255)],
+        true,
+        -1,
+        random(['manny', 'stanley', 'ricky', 'blimp', 'hippo', 'grubby']),
+        name
+    ); // Create the local goblin
 
     // Calculate UI color based on contrast against background (240, 240, 240)
     you.ui_color = calculateUIColor(you.color, [240, 240, 240]);
@@ -109,7 +141,40 @@ window.setup = async() => {
     ellipseMode(CENTER);
     textFont(assets.font);
     textSize(16);
-    start();
+    // No auth UI logic here; button is bound by auth.js module
+    await start();
+
+    // React to auth changes: update goblin name accordingly
+    window.addEventListener('auth:user-changed', async (evt) => {
+        const user = evt.detail?.user || null;
+        if (!you) return;
+        let name = '';
+        if (user) {
+            const existing = await getProfileName();
+            if (existing && existing.trim()) {
+                name = existing.trim();
+            } else {
+                name = generateGoblinName();
+                await upsertProfileName(name);
+            }
+        } else {
+            name = generateGoblinName();
+        }
+        if (name && name !== you.name) {
+            you.name = name;
+            sendMessage({ type: 'update', goblin: you });
+        }
+    });
+
+    // React to profile display-name saves from the account menu
+    window.addEventListener('profile:name-updated', (evt) => {
+        const newName = (evt.detail?.name || '').trim();
+        if (!you || !newName) return;
+        if (newName !== you.name) {
+            you.name = newName;
+            sendMessage({ type: 'update', goblin: you });
+        }
+    });
 }
 window.windowResized = () => { 
     resizeCanvas(windowWidth, windowHeight);
@@ -199,7 +264,7 @@ function quickdraw_update(delta) {
     var header = "";
     if (game_state === 'waiting') { // See all players, all lines, countdown to start
         for (let goblin of goblins) {
-            goblin.update(delta);
+            goblin.update(delta, true, true);
         }
         header = `Waiting for players... (${int(timer)} seconds)`;
     } else if (game_state === 'drawing') { // See only you and your lines, and a header with the prompt and timer
@@ -222,14 +287,16 @@ function quickdraw_update(delta) {
         header = `Say your rating (1-5) for this drawing!`;
     } else if (game_state === 'finished') { // See all players, winner's lines, and a header with the results
         last_winner = (goblins.find(g => g.id === results[0]?.artistId))?.id || -1; // Get the last winner's id
+        last_winner_name = ""
         for (let goblin of goblins) {
             if (last_winner !== -1 && goblin.id === last_winner) {
-                goblin.update(delta); // Draw lines for the winning artist
+                goblin.update(delta, true, true); // Draw lines for the winning artist
+                last_winner_name = goblin.name;
             } else {
-                goblin.update(delta, false); // Don't draw lines for others
+                goblin.update(delta, false, true); // Don't draw lines for others
             }
         }
-        header = `Winner: ${last_winner !== -1 ? last_winner : "No winner"}!`;
+        header = `Winner: ${last_winner !== -1 ? last_winner_name : "No winner"}!`;
     }
 
     push();
@@ -246,7 +313,7 @@ function guessinggame_update(delta) {
     var header = "";
     if (game_state === 'waiting') { // See all players, all lines, countdown
         for (let goblin of goblins) {
-            goblin.update(delta);
+            goblin.update(delta, true, true);
         }
         header = `Waiting for players... (${int(timer)} seconds)`;
     }
@@ -267,7 +334,7 @@ function guessinggame_update(delta) {
     else if (game_state === 'reveal') { // See all players, current artist's lines, and a header with the prompt
         for (let goblin of goblins) {
             if (goblin.id === current_artist) {
-                goblin.update(delta);
+                goblin.update(delta, true);
             } else {
                 goblin.update(delta, false);
             }
@@ -282,13 +349,13 @@ function guessinggame_update(delta) {
                 push();
                 fill(artist.color[0], artist.color[1], artist.color[2]);
                 textAlign(CENTER);
-                text(`${artist.id}: ${result.score}`, windowWidth / 2, 100 + results.indexOf(result) * 20);
+                text(`${artist.name}: ${result.score}`, windowWidth / 2, 100 + results.indexOf(result) * 20);
                 pop();
             }
         }
 
         for (let goblin of goblins) {
-            goblin.update(delta); 
+            goblin.update(delta, false, true);
         }
     }
 
@@ -390,7 +457,7 @@ function onmessage(event) {
             const goblin = goblins.find(g => g.id === data.goblin.id);
             if (!goblin) {
                 // If the goblin doesn't exist, create a new one
-                goblins.push(new Goblin(data.goblin.x, data.goblin.y, data.goblin.color, false, data.goblin.id, data.goblin.shape));
+                goblins.push(new Goblin(data.goblin.x, data.goblin.y, data.goblin.color, false, data.goblin.id, data.goblin.shape, data.goblin.name || ''));
                 return;
             }
             if (goblin) {
@@ -400,6 +467,7 @@ function onmessage(event) {
                 goblin.cursor = createVector(data.goblin.cursor._values[0], data.goblin.cursor._values[1]);
                 goblin.color = data.goblin.color;
                 goblin.tool = data.goblin.tool || 'brush'; // Update tool, default to brush if not provided
+                goblin.name = data.goblin.name || goblin.name || '';
                 if (goblin.lines.length !== data.goblin.lines.length) {
                     goblin.lines = [];
                     for (let i = 0; i < data.goblin.lines.length; i++) {

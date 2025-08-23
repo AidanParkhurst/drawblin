@@ -9,3 +9,98 @@ body {
 
     overflow: hidden;
 }
+
+#login-button {
+    position: fixed;
+    top: 8px;
+    right: 8px;
+    z-index: 1000;
+
+    font-family: 'Neucha'; 
+    font-size: 20px;
+    text-decoration: none;
+
+    padding: 6px 10px;
+    border-radius: 10px;
+    color: rgba(30, 30, 30, 0.5);
+    /* dashed border, wider space between dashes than usual */
+    border: 3px dashed rgba(30, 30, 30, 0.2);
+    transition: 0.3s all;
+}
+
+#login-button:hover {
+    color: rgba(30, 30, 30, 0.8);
+    border: 3px dashed rgba(30, 30, 30, 0.4);
+}
+
+/* Account menu */
+#account-menu {
+    position: fixed;
+    top: 48px; /* below the login button */
+    right: 8px;
+    z-index: 1001;
+
+    min-width: 220px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(240, 240, 240, 255);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    backdrop-filter: blur(2px);
+
+    font-family: 'Neucha';
+    color: rgba(30, 30, 30, 0.8);
+    transition: 0.3s all;
+}
+
+#account-menu .account-menu__name {
+    font-size: 18px;
+}
+
+#account-menu .account-menu__input {
+    width: 100%;
+    box-sizing: border-box;
+
+    font-family: 'Neucha';
+    font-size: 18px;
+    color: rgba(30,30,30,0.9);
+
+    padding: 8px 10px;
+
+    border: 3px dashed rgba(30,30,30,0.2);
+    border-radius: 10px;
+
+    background: rgba(240, 240, 240, 0);
+}
+
+#account-menu .account-menu__buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+#account-menu .account-menu__action {
+    width: 100%;
+    padding: 8px 10px;
+
+    border: 3px dashed rgba(30, 30, 30, 0.2);
+    border-radius: 10px;
+
+    font-family: 'Neucha';
+    font-size: 18px;
+    color: rgba(30, 30, 30, 0.7);
+    background: rgba(255, 255, 255, 0);
+
+    cursor: pointer;
+
+    transition: 0.2s all;
+}
+
+#account-menu .account-menu__action:hover {
+    color: rgba(30, 30, 30, 0.9);
+    border-color: rgba(30, 30, 30, 0.4);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+#account-menu .account-menu__action--danger {
+    color: #a11;
+}
