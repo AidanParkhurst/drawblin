@@ -34,7 +34,7 @@ class Chat {
 
         // Message display bottom to top
         for (let i = 0; i < this.messages.length; i++) {
-            var chatter_color = this.messages[i].user ? this.messages[i].user.color : [0, 0, 0];
+            var chatter_color = this.messages[i].user ? this.messages[i].user.ui_color : [0, 0, 0];
             fill(chatter_color[0], chatter_color[1], chatter_color[2], 150); // Semi-transparent background
             let y = windowHeight - this.height + 10 + i * 20;
             text(this.messages[i].content, 30, y);

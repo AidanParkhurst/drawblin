@@ -87,9 +87,9 @@ class Input {
             // Send the message to the server or handle it as needed
             if (this.text.trim() !== "" && this.text !== this.placeholder) {
                 sendMessage({type: "chat", content: this.text}); // Send the message to the server
-                if (this.chat) {
-                    this.chat.messages.push({user: you, content: this.text}); // Add the message to the chat display
-                }
+                // if (this.chat) {
+                //     this.chat.messages.push({user: you, content: this.text}); // Add the message to the chat display
+                // }
                 if (you) {
                     you.say(this.text); // Goblin says the message
                     you.frozen = false; // Unfreeze the goblin after sending the message

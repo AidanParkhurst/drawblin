@@ -9,6 +9,7 @@ class Goblin {
         this.x = x;
         this.y = y;
         this.color = color;
+        this.ui_color = color;
         this.flip = false;
         this.name = name || '';
 
@@ -61,7 +62,9 @@ class Goblin {
         this.walk_speed = 0.3; // Speed of the walking animation
         this.bounce_height = 3; // How high the goblin bounces
         this.tilt_angle = 5; // Maximum tilt angle in degrees
+        this.hasCrown = false; // crown display flag
     }
+
 
     // Helper function to compare colors (handles both arrays and primitives)
     colorsEqual(color1, color2) {
@@ -166,26 +169,30 @@ class Goblin {
 
         pop();
 
+        let height = this.size * (assets.sprites[this.shape].height / assets.sprites[this.shape].width);
+
+        // Draw name (adjust vertical offset if crown showing)
+        if (draw_name && this.name) {
+            push();
+            noStroke();
+            fill(this.ui_color[0], this.ui_color[1], this.ui_color[2], 200);
+            textAlign(CENTER, BOTTOM);
+            textSize(14);
+            const nameOffset = this.hasCrown ? -60 : -50;
+            text(this.name, 0, nameOffset);
+            pop();
+        }
+
         translate(0, bounceOffset); // Apply bounce offset
         
         // Apply tilt rotation
         rotate(radians(tiltOffset));
-        
-        // Draw name above goblin if available
-        if (draw_name && this.name) {
-            push();
-            noStroke();
-            fill(this.color[0], this.color[1], this.color[2], 200);
-            textAlign(CENTER, BOTTOM);
-            textSize(14);
-            text(this.name, 0, -50);
-            pop();
-        }
 
         if (this.flip) {
             scale(-1, 1); // Flip horizontally
         }
-        image(assets.sprites[this.shape], 0, 0, this.size, this.size * (assets.sprites[this.shape].height / assets.sprites[this.shape].width));
+        image(assets.sprites[this.shape], 0, 0, this.size, height);
+        if (this.hasCrown) this.display_crown();
 
         // OG: just a circle
         // fill(this.color);
@@ -203,8 +210,28 @@ class Goblin {
         var opacity = 255 * sin(progress * PI);
         var offsetX = 20 + progress * 10;
         var offsetY = 10 + progress * 10;
-        fill(this.color[0], this.color[1], this.color[2], opacity);
+        fill(this.ui_color[0], this.ui_color[1], this.ui_color[2], opacity);
         text(this.speech, this.x + offsetX, this.y - offsetY);
+        pop();
+    }
+
+    // Render a crown above the goblin (used for top scorer in waiting scoreboard)
+    display_crown() {
+        if (!assets?.sprites?.crown) return;
+        let height = this.size * (assets.sprites[this.shape].height / assets.sprites[this.shape].width);
+        push();
+        imageMode(CENTER);
+        noTint(); // ensure crown keeps original colors
+        // Base vertical position above head
+        const baseY = -(height/2 + 10);
+
+        // Gentle bobbing: amplitude 5px, period ~ (2PI / 0.08) frames (~78 frames) => about 1.3s at 60fps
+        const bob = Math.sin((frameCount * 0.03) + (this.id % 1000)) * 5;
+        const crownY = baseY + bob;
+        const crownWidth = this.size * 0.5;
+        const crownHeight = crownWidth * (assets.sprites.crown.height / assets.sprites.crown.width);
+        image(assets.sprites.crown, 0, crownY, crownWidth, crownHeight);
+
         pop();
     }
 

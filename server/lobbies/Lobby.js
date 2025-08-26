@@ -19,6 +19,9 @@ class Lobby {
         this.clients.delete(socket);
         this.users.delete(socket);
         console.log(`Client removed from lobby ${this.id}. Lobby size: ${this.clients.size}/${this.maxPlayers}`);
+        if (this.onClientRemoved) {
+            try { this.onClientRemoved(socket); } catch(e){ console.error(e); }
+        }
     }
 
     isFull() {
@@ -45,20 +48,23 @@ class Lobby {
     handleMessage(socket, message) {
         // Handle different message types
         if (message.type === "update") {
-            // Add or update user 
             this.users.set(socket, { id: message.goblin.id });
+            // Broadcast updates to everyone else (exclude sender for position updates)
+            this.broadcast(message, socket);
+            return;
         } else if (message.type === "chat") {
-            // Handle chat messages
             if (this.users.has(socket)) {
                 const user = this.users.get(socket);
-                message.userId = user.id; // Attach user ID to the message
+                message.userId = user.id;
             } else {
-                message.userId = "unknown"; // Default if no user ID is set
+                message.userId = "unknown";
             }
             console.log(`Received chat message from ${message.userId} in lobby ${this.id}: ${message.content}`);
+            // Broadcast chat to ALL including sender
+            this.broadcast(message, null);
+            return;
         }
-
-        // Broadcast message to all other clients in the same lobby
+        // Default: broadcast to all others
         this.broadcast(message, socket);
     }
 }

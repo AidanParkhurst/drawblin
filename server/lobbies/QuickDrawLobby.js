@@ -16,13 +16,13 @@ class QuickDrawLobby extends Lobby {
         this.currentArtist = null; // id of artist being voted on 
         // TODO: Import a lot of these consts from a rules file, accessible by the frontend as well
         this.waitingTime = 20; // seconds to wait for players
-        this.drawingTime = 60; // seconds
+        this.drawingTime = 80; // seconds (extended)
         this.preVotingTime = 5; // seconds before voting starts
         this.votingTime = 15;
         this.celebrationTime = 10; // seconds to show off the winner
         this.gameTimer = null;
         this.header = ""; // Header for the game state
-        this.timer = this.waitingTime; // Start counting down from waiting time
+    this.timer = this.waitingTime; // Start counting down from waiting time (will shrink as players join)
         this.tickrate = 100;
         this.prompt = ""; // what to draw
         this.finishedDrawings = new Map(); // goblin id -> votes: [{ userId, vote }]
@@ -35,6 +35,14 @@ class QuickDrawLobby extends Lobby {
     startGameLoop() {
         this.gameTimer = setInterval(() => this.tick(), this.tickrate);
     }
+
+    addClient(socket) {
+        super.addClient(socket);
+        if (this.gameState === 'waiting') {
+            const target = this.desiredWaitForPlayers();
+            if (this.timer > target) this.timer = target; // shrink but never extend
+        }
+    }
     
     tick() {
         if (!this.clients || this.clients.size === 0) return;
@@ -42,14 +50,15 @@ class QuickDrawLobby extends Lobby {
         if (this.gameState === 'waiting') {
             // Start the game when we have enough players or after waiting time
             if (this.clients.size == this.maxPlayers || (this.clients.size >= this.minPlayers && this.timer <= 0)) {
-                this.prompt = prompts.difficulty.easy[Math.floor(Math.random() * prompts.difficulty.easy.length)];
+                const pool = prompts.quickdrawConcepts && prompts.quickdrawConcepts.length ? prompts.quickdrawConcepts : prompts.difficulty.easy;
+                this.prompt = pool[Math.floor(Math.random() * pool.length)];
                 this.gameState = 'drawing';
                 this.timer = this.drawingTime; // Set timer to drawing time
                 this.broadcast({ type: "game_state", state: "drawing", prompt: this.prompt, time: this.drawingTime });
                 console.log(`Quick draw lobby ${this.id} started with prompt: ${this.prompt}`);
             }
         } else if (this.gameState === 'drawing') {
-            if (this.timer <= -this.drawingTime * 0.05) { // Allow a bit of extra time for last updates
+            if (this.timer <= 0) { // Transition immediately when timer ends (no extra hidden delay)
                 for (const client of this.clients) {
                     const user = this.users.get(client);
                     if (user) {
@@ -108,7 +117,7 @@ class QuickDrawLobby extends Lobby {
                 this.sendTo(socket, {type: "game_state", state: this.gameState, prompt: this.prompt, time: Math.max(0, this.timer), artistId: this.currentArtist, results: this.sortedResults });
             }
             this.users.set(socket, { id: message.goblin.id });
-            this.broadcast(message, socket); // Broadcast updates to all clients
+            this.broadcast(message, socket); // still exclude sender for movement updates
 
         } else if (message.type === "chat") {
             // Handle chat
@@ -124,7 +133,7 @@ class QuickDrawLobby extends Lobby {
                 var vote = this.getVoteFromMessage(message.content);
                 
                 if (!vote || message.userId === this.currentArtist) { // Normal chat message
-                    this.broadcast(message, socket); // Broadcast chat message to all clients
+                    this.broadcast(message, null); // include sender for chat
                     console.log(`Quick draw lobby ${this.id} chat from ${message.userId}: ${message.content}`);
                     return;
                 }
@@ -144,8 +153,8 @@ class QuickDrawLobby extends Lobby {
                     existingVote.vote = vote;
                 } else {
                     current_art.votes.push({ userId: message.userId, vote: vote });
-                    this.broadcast({ type: "chat", userId: message.userId, content: "Voted!" }); // Broadcast chat message to all clients
                 }
+                this.broadcast({ type: "chat", userId: message.userId, content: "Voted!" });
             }
         }
     }
@@ -163,11 +172,12 @@ class QuickDrawLobby extends Lobby {
     resetLobby() {
         this.gameState = 'waiting';
         this.currentArtist = null;
-        this.timer = this.waitingTime; // Reset to waiting time for countdown
+        // Dynamic wait based on current player count
+        this.timer = this.desiredWaitForPlayers();
         this.prompt = "";
         this.finishedDrawings.clear();
         this.sortedResults = [];
-        this.broadcast({ type: "game_state", state: "waiting", time: this.waitingTime });
+        this.broadcast({ type: "game_state", state: "waiting", time: this.timer });
         console.log(`Quick draw lobby ${this.id} has been reset for a new game.`);
     }
 
@@ -176,6 +186,18 @@ class QuickDrawLobby extends Lobby {
             clearInterval(this.gameTimer);
             this.gameTimer = null;
         }
+    }
+
+    desiredWaitForPlayers() {
+        // Scale from waitingTime (e.g., 20s) at minPlayers down to 10s at maxPlayers
+        const high = this.waitingTime;
+        const low = 10;
+        const p = this.clients.size;
+        if (p >= this.maxPlayers) return low;
+        if (p <= this.minPlayers) return high;
+        const span = this.maxPlayers - this.minPlayers;
+        const t = (p - this.minPlayers) / span; // 0..1
+        return high - (high - low) * t;
     }
 }
 

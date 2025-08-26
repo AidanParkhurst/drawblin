@@ -7,11 +7,13 @@ class PlayerList {
         this.circleSize = circleSize; // Size of each circle representing a player
         this.spacing = spacing; // Spacing between circles
         this.profileDisplay = new ProfileDisplay(); // Create profile display instance
+    this.pointBursts = []; // { userId, points, age, duration }
     }
 
     update() {
         // Update profile display first (it handles its own visibility)
         this.profileDisplay.update();
+        this.updatePointBursts();
         
         // Only handle goblin hover/click if profile display is not visible
         if (!this.profileDisplay.visible) {
@@ -59,6 +61,27 @@ class PlayerList {
 
             pop(); 
         }
+
+        // Draw point bursts after circles so they overlay
+        for (const b of this.pointBursts) {
+            const g = goblins.find(g=> g.id === b.userId);
+            if (!g) continue;
+            // Recompute circle x for this goblin
+            const idx = goblins.indexOf(g);
+            if (idx === -1) continue;
+            const x = startX + (idx * (this.circleSize + this.spacing));
+            const baseY = y - this.circleSize * 0.9; // above circle
+            const progress = b.age / b.duration;
+            const floatY = baseY - progress * 40; // drift up 40px
+            const alpha = 255 * (1 - progress);
+            push();
+            translate(x, floatY);
+            textAlign(CENTER, BOTTOM);
+            textSize(20);
+            fill(g.ui_color[0], g.ui_color[1], g.ui_color[2], alpha);
+            text(`+${b.points}`, 0, 0);
+            pop();
+        }
         
         pop();
     }
@@ -77,6 +100,18 @@ class PlayerList {
             }
         }
         return null; // No goblin hovered
+    }
+
+    // Trigger a floating +points indicator
+    addPointBurst(userId, points) {
+        if (points === 0) return;
+        this.pointBursts.push({ userId, points, age: 0, duration: 1200 }); // duration ms
+    }
+
+    updatePointBursts() {
+        const dt = deltaTime || 16; // ms
+        for (const b of this.pointBursts) b.age += dt;
+        this.pointBursts = this.pointBursts.filter(b => b.age < b.duration);
     }
 
     // Check if mouse is interacting with player list UI elements
