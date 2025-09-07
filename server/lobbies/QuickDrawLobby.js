@@ -13,7 +13,7 @@ class QuickDrawLobby extends Lobby {
         super(id, 6); // Quick draw works well with 4-6 players for voting
         this.minPlayers = 2; // Minimum players to start the game
         this.gameState = "waiting"; // waiting, drawing, pre-voting, voting, finished
-        this.currentArtist = null; // id of artist being voted on 
+    this.currentArtist = null; // id of artist being voted on 
         // TODO: Import a lot of these consts from a rules file, accessible by the frontend as well
         this.waitingTime = 20; // seconds to wait for players
         this.drawingTime = 80; // seconds (extended)
@@ -27,6 +27,23 @@ class QuickDrawLobby extends Lobby {
         this.prompt = ""; // what to draw
         this.finishedDrawings = new Map(); // goblin id -> votes: [{ userId, vote }]
         this.sortedResults = []; // Store results for the finished state 
+
+        // Handle disconnects
+        this.onClientRemoved = (socket) => {
+            const removedId = this.getUserId(socket);
+            if (removedId) {
+                // Remove from finished drawings if present
+                this.finishedDrawings.delete(removedId);
+                // If currently being voted on, advance as if timer ran out
+                if (this.gameState === 'voting' && this.currentArtist === removedId) {
+                    this.timer = 0;
+                }
+            }
+            if (this.clients.size < this.minPlayers && this.gameState !== 'waiting') {
+                // Not enough players; reset
+                this.resetLobby();
+            }
+        };
 
         // Start the game loop immediately
         this.startGameLoop();
@@ -45,12 +62,12 @@ class QuickDrawLobby extends Lobby {
     }
     
     tick() {
-        if (!this.clients || this.clients.size === 0) return;
+    if (!this.clients || this.clients.size === 0) return;
         this.timer -= this.tickrate / 1000; // Convert ms to seconds and countdown
         if (this.gameState === 'waiting') {
             // Start the game when we have enough players or after waiting time
             if (this.clients.size == this.maxPlayers || (this.clients.size >= this.minPlayers && this.timer <= 0)) {
-                const pool = prompts.quickdrawConcepts && prompts.quickdrawConcepts.length ? prompts.quickdrawConcepts : prompts.difficulty.easy;
+                const pool = prompts.quickdrawConcepts && prompts.quickdrawConcepts.length ? prompts.quickdrawConcepts : ['nature','adventure','storm'];
                 this.prompt = pool[Math.floor(Math.random() * pool.length)];
                 this.gameState = 'drawing';
                 this.timer = this.drawingTime; // Set timer to drawing time
@@ -60,10 +77,8 @@ class QuickDrawLobby extends Lobby {
         } else if (this.gameState === 'drawing') {
             if (this.timer <= 0) { // Transition immediately when timer ends (no extra hidden delay)
                 for (const client of this.clients) {
-                    const user = this.users.get(client);
-                    if (user) {
-                        this.finishedDrawings.set(user.id, { votes: [] });
-                    }
+                    const uid = this.getUserId(client);
+                    if (uid) this.finishedDrawings.set(uid, { votes: [] });
                 }
                 this.gameState = 'pre-voting';
                 this.timer = this.preVotingTime; // Set timer to pre-voting time
@@ -73,7 +88,8 @@ class QuickDrawLobby extends Lobby {
         } else if (this.gameState === 'pre-voting') {
             if (this.timer <= 0) { // Wait 5 seconds before starting voting
                 this.gameState = 'voting';
-                this.currentArtist = this.finishedDrawings.keys().next().value; // Get the first artist
+                // Pick the first available artist id
+                this.currentArtist = Array.from(this.finishedDrawings.keys())[0] || null;
                 this.timer = this.votingTime; // Set timer to voting time
                 this.broadcast({ type: "game_state", state: "voting", artistId: this.currentArtist, time: this.votingTime });
                 console.log(`Quick draw lobby ${this.id} started voting phase for artist: ${this.currentArtist}`);
@@ -116,7 +132,7 @@ class QuickDrawLobby extends Lobby {
             if (!this.users.has(socket)) {
                 this.sendTo(socket, {type: "game_state", state: this.gameState, prompt: this.prompt, time: Math.max(0, this.timer), artistId: this.currentArtist, results: this.sortedResults });
             }
-            this.users.set(socket, { id: message.goblin.id });
+            this.users.set(socket, { id: message.goblin?.id });
             this.broadcast(message, socket); // still exclude sender for movement updates
 
         } else if (message.type === "chat") {

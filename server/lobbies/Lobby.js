@@ -29,18 +29,30 @@ class Lobby {
     }
 
     broadcast(message, excludeSocket = null) {
+        const json = JSON.stringify(message);
         for (const client of this.clients) {
-            if (client !== excludeSocket && client.readyState === client.OPEN) {
-                client.send(JSON.stringify(message));
+            if (client === excludeSocket) continue;
+            try {
+                // ws: OPEN === 1
+                if (client.readyState === 1 || client.readyState === client.OPEN) {
+                    client.send(json);
+                }
+            } catch (e) {
+                // Guard against crashes from stale sockets; they'll be cleaned up on 'close'
+                console.error(`Broadcast send failed in lobby ${this.id}:`, e?.message || e);
             }
         }
     }
 
     sendTo(socket, message) {
-        if (socket.readyState === socket.OPEN) {
-            socket.send(JSON.stringify(message));
-        } else {
-            console.error("Socket is not open. Unable to send message.");
+        try {
+            if (socket && (socket.readyState === 1 || socket.readyState === socket.OPEN)) {
+                socket.send(JSON.stringify(message));
+            } else {
+                console.error("Socket is not open. Unable to send message.");
+            }
+        } catch (e) {
+            console.error(`sendTo failed in lobby ${this.id}:`, e?.message || e);
         }
     }
 
@@ -68,5 +80,14 @@ class Lobby {
         this.broadcast(message, socket);
     }
 }
+
+// Convenience for subclasses: safely get a user's id from a socket
+Lobby.prototype.getUserId = function(socket) {
+    try {
+        return this.users.get(socket)?.id ?? null;
+    } catch (_) {
+        return null;
+    }
+};
 
 export default Lobby;

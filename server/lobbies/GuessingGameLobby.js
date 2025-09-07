@@ -27,8 +27,29 @@ class GuessingGameLobby extends Lobby {
 
         this.startGameLoop();
 
-        // Hook join/leave events to refresh waiting scoreboard
-        this.onClientRemoved = () => {
+        // Hook join/leave events to refresh waiting scoreboard and handle artist drop
+        this.onClientRemoved = (socket) => {
+            // Clean per-round and persistent state tied to this socket
+            this.scores.delete(socket);
+            this.persistentScores.delete(socket);
+            for (const set of this.wordGuessers.values()) set.delete(socket);
+
+            if (this.currentArtist === socket) {
+                // Treat as if timer ran out on the round
+                if (this.gameState === 'drawing') {
+                    this.forceReveal('artist_disconnected');
+                } else if (this.gameState === 'reveal') {
+                    // Fast-forward to next artist
+                    this.timer = 0;
+                }
+                this.currentArtist = null;
+            } else {
+                // If player count drops below minimum mid-round, return to waiting
+                if (this.clients.size < this.minPlayers && this.gameState !== 'waiting') {
+                    this.backToWaiting('not_enough_players');
+                }
+            }
+
             if (this.gameState === 'waiting') this.broadcastWaitingWithScores();
         };
     }
@@ -64,7 +85,7 @@ class GuessingGameLobby extends Lobby {
                 this.timer = this.revealTime; // Set timer for reveal phase
             // Broadcast full prompt (bracket everything to indicate reveal so client colors full phrase)
             const fullyBracketed = this.prompt_tokens.map(t => t.type === 'literal' ? t.value : `[${t.value}]`).join(' ');
-            this.broadcast({ type: "game_state", state: "reveal", prompt: fullyBracketed, artistId: this.users.get(this.currentArtist).id, time: this.revealTime });
+            this.broadcast({ type: "game_state", state: "reveal", prompt: fullyBracketed, artistId: this.getUserId(this.currentArtist), time: this.revealTime });
                 console.log(`Guessing game lobby ${this.id} prompt revealed: ${this.prompt}`);
             }
         } else if (this.gameState === 'reveal') {
@@ -102,7 +123,17 @@ class GuessingGameLobby extends Lobby {
     // Generate a phrase prompt instead of a single word
     this.generatePhrasePrompt();
         
-        var artistId = this.users.get(artistSocket).id;
+        const artistId = this.getUserId(artistSocket);
+        if (!artistId) {
+            // Pick another eligible artist that has an id
+            const candidates = Array.from(this.clients).filter(s => s !== artistSocket);
+            const fallback = candidates.find(s => this.getUserId(s));
+            if (fallback) {
+                return this.startDrawingPhase(fallback);
+            }
+            // No valid artist; go back to waiting
+            return this.backToWaiting('no_valid_artist');
+        }
         this.currentArtist = artistSocket;
 
         this.points_for_guess = this.clients.size; // Points for guessing is number of guessers + 1
@@ -119,7 +150,7 @@ class GuessingGameLobby extends Lobby {
             if (t.type === 'literal') return t.value;
             return '_'.repeat(t.value.length);
         }).join(' ');
-        for (const client of this.clients) {
+    for (const client of this.clients) {
             if (client === artistSocket) continue;
             this.sendTo(client, { type: "game_state", state: "drawing", prompt: masked, time: this.drawingTime, artistId: artistId });
         }
@@ -127,37 +158,68 @@ class GuessingGameLobby extends Lobby {
     }
 
     generatePhrasePrompt() {
-        // Pick a random template
-        const templates = prompts?.phrases?.templates || ['(noun)'];
+        const templates = prompts?.phraseTemplates && prompts.phraseTemplates.length ? prompts.phraseTemplates : ['(character) riding a (ridable)'];
         const template = templates[Math.floor(Math.random() * templates.length)];
-        const nouns = prompts?.phrases?.nouns || prompts.difficulty.easy;
-        const adjs = prompts?.phrases?.adjectives || ['big','small','old'];
+        const adjectives = prompts?.adjectives && prompts.adjectives.length ? prompts.adjectives : ['big','small','old','new'];
+        const lexicon = Array.isArray(prompts?.lexicon) ? prompts.lexicon : [];
 
-        // Tokenize template preserving placeholders
-        // Split on spaces while keeping punctuation simple
+        // Helper: pick random from array
+        const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+        // Helper: choose lexicon word by tag expression
+        // Supports: 'tag', 'tag1|tag2' (OR), 'tag1+tag2' (AND). Combined ORs of AND-clauses are allowed.
+        const chooseByTags = (expr) => {
+            if (!lexicon.length) return null;
+            const orClauses = expr.split('|').map(s => s.trim()).filter(Boolean);
+            let candidates = [];
+            for (const clause of orClauses) {
+                const andTags = clause.split('+').map(s => s.trim()).filter(Boolean);
+                const matched = lexicon.filter(entry => andTags.every(t => entry.tags?.includes(t)));
+                candidates = candidates.concat(matched);
+            }
+            if (candidates.length === 0) {
+                // Fallback: exact word match in lexicon
+                const exact = lexicon.find(e => e.word.toLowerCase() === expr.toLowerCase());
+                if (exact) return exact.word;
+            }
+            // Prefer single-word entries for better scoring/masking
+            const singles = candidates.filter(e => !e.word.includes(' '));
+            const pool = singles.length ? singles : candidates;
+            return pool.length ? pick(pool).word : null;
+        };
+
+        // Tokenize and fill placeholders
         const rawParts = template.split(/\s+/);
         const tokens = [];
         for (const part of rawParts) {
-            if (part === '(noun)') {
-                const val = nouns[Math.floor(Math.random() * nouns.length)];
-                tokens.push({ type: 'noun', value: val });
-            } else if (part === '(adj)') {
-                const val = adjs[Math.floor(Math.random() * adjs.length)];
-                tokens.push({ type: 'adj', value: val });
+            const m = part.match(/^\(([^)]+)\)$/);
+            if (m) {
+                const inner = m[1].trim();
+                if (inner === 'adj') {
+                    tokens.push({ type: 'adj', value: pick(adjectives) });
+                } else if (inner === 'noun') {
+                    // Any lexicon entry
+                    const singles = lexicon.filter(e => !e.word.includes(' '));
+                    const entry = (singles.length ? pick(singles) : pick(lexicon));
+                    tokens.push({ type: 'noun', value: entry ? entry.word : 'thing' });
+                } else {
+                    // Treat as tag expression
+                    const chosen = chooseByTags(inner) || 'thing';
+                    tokens.push({ type: 'noun', value: chosen });
+                }
             } else {
                 tokens.push({ type: 'literal', value: part });
             }
         }
         this.prompt_tokens = tokens;
         this.prompt = tokens.map(t => t.value).join(' ');
-        // Build scorable words set (lowercase, unique)
         this.scorable_words = new Set(tokens.filter(t => t.type !== 'literal').map(t => t.value.toLowerCase()));
     }
 
     handleMessage(socket, message) {
         if (message.type === "update") {
             if (!this.users.has(socket)) {
-                this.users.set(socket, { id: message.goblin.id });
+                this.users.set(socket, { id: message.goblin?.id });
                 // On first update from a new client, send current state and scoreboard if waiting
                 if (this.gameState === 'waiting') {
                     // Adjust timer now that a new player is present
@@ -168,12 +230,12 @@ class GuessingGameLobby extends Lobby {
                     // After adding user ensure everyone sees updated list (now that ID is known)
                     this.broadcastWaitingWithScores();
                 } else if (this.gameState === 'drawing') {
-                    this.sendTo(socket, { type: "game_state", state: 'drawing', prompt: this.maskedPromptForNewJoiner(), time: Math.max(0, this.timer), artistId: this.currentArtist ? this.users.get(this.currentArtist).id : null });
+                    this.sendTo(socket, { type: "game_state", state: 'drawing', prompt: this.maskedPromptForNewJoiner(), time: Math.max(0, this.timer), artistId: this.getUserId(this.currentArtist) });
                 } else if (this.gameState === 'reveal') {
-                    this.sendTo(socket, { type: "game_state", state: 'reveal', prompt: this.prompt, artistId: this.currentArtist ? this.users.get(this.currentArtist).id : null, time: Math.max(0, this.timer) });
+                    this.sendTo(socket, { type: "game_state", state: 'reveal', prompt: this.prompt, artistId: this.getUserId(this.currentArtist), time: Math.max(0, this.timer) });
                 }
             } else {
-                this.users.set(socket, { id: message.goblin.id });
+                this.users.set(socket, { id: message.goblin?.id });
             }
             this.broadcast(message, socket);
 
@@ -228,7 +290,7 @@ class GuessingGameLobby extends Lobby {
                     // Broadcast point_scored events (guesser and artist bonus if any)
                     this.broadcast({ type: 'point_scored', userId: message.userId, points: totalPointsEarned });
                     if (artistBonusPerWord > 0 && this.currentArtist) {
-                        const artistIdBroadcast = this.users.get(this.currentArtist)?.id;
+                        const artistIdBroadcast = this.getUserId(this.currentArtist);
                         if (artistIdBroadcast != null) this.broadcast({ type: 'point_scored', userId: artistIdBroadcast, points: artistBonusPerWord });
                     }
                     // Preserve original content explicitly before any mutation
@@ -276,7 +338,7 @@ class GuessingGameLobby extends Lobby {
                     this.gameState = 'reveal';
                     this.timer = this.revealTime;
                     const fullyBracketed = this.prompt_tokens.map(t => t.type === 'literal' ? t.value : `[${t.value}]`).join(' ');
-                    this.broadcast({ type: "game_state", state: "reveal", prompt: fullyBracketed, artistId: this.users.get(this.currentArtist).id, time: this.revealTime });
+                    this.broadcast({ type: "game_state", state: "reveal", prompt: fullyBracketed, artistId: this.getUserId(this.currentArtist), time: this.revealTime });
                     console.log(`Guessing game lobby ${this.id} all words discovered, revealing prompt: ${this.prompt}`);
                 }
             } else {
@@ -336,6 +398,32 @@ class GuessingGameLobby extends Lobby {
         const span = this.maxPlayers - this.minPlayers;
         const t = (p - this.minPlayers) / span; // 0..1
         return high - (high - low) * t;
+    }
+
+    // Force move to reveal phase safely (e.g., artist disconnect)
+    forceReveal(reason = '') {
+        if (this.gameState !== 'drawing') return;
+        this.gameState = 'reveal';
+        this.timer = this.revealTime;
+        const fullyBracketed = this.prompt_tokens.map(t => t.type === 'literal' ? t.value : `[${t.value}]`).join(' ');
+        this.broadcast({ type: 'game_state', state: 'reveal', prompt: fullyBracketed, artistId: this.getUserId(this.currentArtist), time: this.revealTime, reason });
+    }
+
+    // Reset to waiting state and announce scoreboard
+    backToWaiting(reason = '') {
+        // Merge scores into persistent
+        for (const [sock, val] of this.scores.entries()) {
+            const prev = this.persistentScores.get(sock) || 0;
+            this.persistentScores.set(sock, prev + val);
+        }
+        this.scores.clear();
+        this.correct_guessers = [];
+        this.currentArtist = null;
+        this.pastArtists = [];
+        this.gameState = 'waiting';
+        this.timer = this.desiredWaitForPlayers();
+        this.broadcast({ type: 'game_state', state: 'waiting', time: this.timer, reason });
+        this.broadcastWaitingWithScores();
     }
 }
 

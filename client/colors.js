@@ -1,5 +1,49 @@
 // Color utility functions for contrast checking and color manipulation
 
+// Primary goblin color palette (exported)
+// Source: provided hex colors; converted to [r,g,b] arrays
+export const paletteHex = [
+    "#f74533",
+    "#f37d28",
+    "#f9ad72",
+    "#fdd053",
+    "#fa878e",
+    "#ce5a96",
+    "#ab79d8",
+    "#d59df5",
+    "#f5c6e9",
+    "#b16b5e",
+    "#bcab2a",
+    "#9ab951",
+    "#649d47",
+    "#339a79",
+    "#3f54bb",
+    "#529be2",
+    "#8ad5fa",
+    "#b8cedf",
+    "#86a0c0",
+    "#2C1C44",
+];
+
+export function hexToRgb(hex) {
+    const h = hex.replace('#','');
+    const bigint = parseInt(h, 16);
+    if (h.length === 6) {
+        const r = (bigint >> 16) & 255;
+        const g = (bigint >> 8) & 255;
+        const b = bigint & 255;
+        return [r, g, b];
+    }
+    // Fallback for 3-digit hex
+    const r = parseInt(h[0] + h[0], 16);
+    const g = parseInt(h[1] + h[1], 16);
+    const b = parseInt(h[2] + h[2], 16);
+    return [r, g, b];
+}
+
+export const palette = paletteHex.map(hexToRgb);
+export const randomPaletteColor = () => palette[Math.floor(Math.random() * palette.length)];
+
 // Calculate relative luminance for contrast checking
 export function getLuminance(color) {
     // Normalize RGB values to 0-1 range

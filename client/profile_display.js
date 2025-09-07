@@ -1,10 +1,10 @@
 import { you, goblins } from './index.js';
 import { assets } from './assets.js';
 import { sendMessage } from './network.js';
-import { calculateUIColor } from './colors.js'; 
+import { calculateUIColor, palette } from './colors.js'; 
 
 class ProfileDisplay {
-    constructor(width = 300, height = 200) {
+    constructor(width = 420, height = 220) {
         this.width = width;
         this.height = height;
         this.x = 0; // Will be set based on player position
@@ -14,33 +14,25 @@ class ProfileDisplay {
         this.playerX = 0; // Position of the player icon that was clicked
         this.playerY = 0; // Position of the player icon that was clicked
         
-        // Color palette setup
-        this.colorPalette = [
-            [255, 100, 100], // Red
-            [100, 255, 100], // Green
-            [100, 100, 255], // Blue
-            [255, 255, 100], // Yellow
-            [255, 100, 255], // Magenta
-            [100, 255, 255], // Cyan
-            [255, 150, 50],  // Orange
-            [150, 50, 255],  // Purple
-            [255, 200, 200], // Pink
-            [200, 255, 200], // Light Green
-            [200, 200, 255], // Light Blue
-            [255, 255, 200], // Light Yellow
-            [150, 150, 150], // Gray
-            [50, 50, 50],    // Dark Gray
-            [255, 255, 255], // White
-            [0, 0, 0]        // Black
-        ];
+        // Color palette setup (shared)
+        this.colorPalette = palette;
         
         this.colorSize = 20;
         this.colorSpacing = 5;
         this.colorsPerRow = 4;
-        this.colorStartX = this.width * 0.55; // Start colors on right side
+        this.colorStartX = this.width * 0.58; // Slightly more to the right to balance layout
         this.colorStartY = 50;
         
         this.hoveredColor = -1;
+
+        // Shapes available for selection
+        this.shapes = ['manny','stanley','ricky','blimp','hippo','grubby'];
+        this.leftArrowHover = false;
+        this.rightArrowHover = false;
+        this.prevMousePressed = false; // for click debouncing
+        // Arrow configuration (adjust these to tweak placement)
+        this.arrowOffset = 80; // pull arrows in a bit to avoid hugging left edge
+        this.arrowSize = 15;   // size of arrow (width from tip to base)
     }
     
     show(goblinId, playerX, playerY) {
@@ -74,6 +66,30 @@ class ProfileDisplay {
         
         // Check for mouse interactions
         this.hoveredColor = -1;
+        this.leftArrowHover = false;
+        this.rightArrowHover = false;
+
+        // Arrow hitboxes use same sprite center as rendering to align precisely
+        const spriteX = this.x + 100; // keep in sync with display() spriteX
+        const spriteY = this.y + this.height / 2;
+        const arrowSize = this.arrowSize;
+        const arrowOffset = this.arrowOffset;
+        // Left arrow (pointing left): tip at spriteX - arrowOffset
+        const leftTipX = spriteX - arrowOffset;
+        const leftBox = { x: leftTipX, y: spriteY - arrowSize/2, w: arrowSize, h: arrowSize };
+        // Right arrow (pointing right): tip at spriteX + arrowOffset
+        const rightTipX = spriteX + arrowOffset;
+        const rightBox = { x: rightTipX - arrowSize, y: spriteY - arrowSize/2, w: arrowSize, h: arrowSize };
+        const justPressed = mouseIsPressed && !this.prevMousePressed;
+        if (mouseX >= leftBox.x && mouseX <= leftBox.x + leftBox.w && mouseY >= leftBox.y && mouseY <= leftBox.y + leftBox.h) {
+            this.leftArrowHover = true;
+            cursor('pointer');
+            if (justPressed) this.cycleShape(-1);
+        } else if (mouseX >= rightBox.x && mouseX <= rightBox.x + rightBox.w && mouseY >= rightBox.y && mouseY <= rightBox.y + rightBox.h) {
+            this.rightArrowHover = true;
+            cursor('pointer');
+            if (justPressed) this.cycleShape(1);
+        }
         
         // Check color palette interactions
         for (let i = 0; i < this.colorPalette.length; i++) {
@@ -104,7 +120,8 @@ class ProfileDisplay {
             this.hide();
         }
         
-        this.display();
+    this.display();
+    this.prevMousePressed = mouseIsPressed; // update debounce state
     }
     
     isMouseInside() {
@@ -127,6 +144,10 @@ class ProfileDisplay {
             // If this is the local player, also update their UI color
             if (this.targetGoblin === you) {
                 you.ui_color = calculateUIColor(newColor, [240, 240, 240]);
+                // Notify listeners that the UI color changed so other UI (e.g., portals) can update
+                try {
+                    window.dispatchEvent(new CustomEvent('ui:color-changed', { detail: { color: you.ui_color } }));
+                } catch (_) { /* no-op if CustomEvent unavailable */ }
             }
             
             sendMessage({ type: 'update', goblin: this.targetGoblin });
@@ -149,12 +170,14 @@ class ProfileDisplay {
         drawingContext.setLineDash([]);
         noStroke();
         
-        // Draw goblin sprite on the left side
-        const spriteX = this.x + 60;
-        const spriteY = this.y + this.height / 2;
-        const spriteSize = 70;
+    // Draw goblin sprite on the left side
+    const spriteX = this.x + 100; // render center (adjust to move sprite); keep in sync with update()
+    const spriteY = this.y + this.height / 2;
+    const spriteSize = 70;
+    const arrowSize = this.arrowSize;
+    const arrowOffset = this.arrowOffset;
         
-        if (assets.sprites && assets.sprites[this.targetGoblin.shape]) {
+    if (assets.sprites && assets.sprites[this.targetGoblin.shape]) {
             const sprite = assets.sprites[this.targetGoblin.shape];
             
             push();
@@ -194,11 +217,22 @@ class ProfileDisplay {
             
             noTint();
             pop();
-        } else {
+    } else {
             // Fallback: draw a colored circle if sprite not available
             fill(this.targetGoblin.color[0], this.targetGoblin.color[1], this.targetGoblin.color[2]);
             ellipse(spriteX, spriteY, spriteSize, spriteSize);
         }
+
+        // Draw shape selection arrows
+        push();
+        noStroke();
+        // Left arrow (on left side, pointing left/outward)
+        fill(this.leftArrowHover ? you.ui_color[0] : you.ui_color[0], this.leftArrowHover ? you.ui_color[1] : you.ui_color[1], this.leftArrowHover ? you.ui_color[2] : you.ui_color[2], this.leftArrowHover ? 255 : 160);
+        triangle(spriteX - arrowOffset, spriteY, spriteX - arrowOffset + arrowSize, spriteY - arrowSize/2, spriteX - arrowOffset + arrowSize, spriteY + arrowSize/2);
+        // Right arrow (on right side, pointing right/outward)
+        fill(this.rightArrowHover ? you.ui_color[0] : you.ui_color[0], this.rightArrowHover ? you.ui_color[1] : you.ui_color[1], this.rightArrowHover ? you.ui_color[2] : you.ui_color[2], this.rightArrowHover ? 255 : 160);
+        triangle(spriteX + arrowOffset, spriteY, spriteX + arrowOffset - arrowSize, spriteY - arrowSize/2, spriteX + arrowOffset - arrowSize, spriteY + arrowSize/2);
+        pop();
         
         // Draw color palette title
         fill(you.ui_color[0], you.ui_color[1], you.ui_color[2]);
@@ -247,6 +281,28 @@ class ProfileDisplay {
         text("Press Escape or click outside to close", this.x + this.width/2, this.y + this.height - 5);
         
         pop();
+    }
+
+    cycleShape(direction) {
+        if (this.targetGoblin !== you) return; // Only local player can change their shape
+        const currentIndex = this.shapes.indexOf(this.targetGoblin.shape);
+        const nextIndex = (currentIndex + direction + this.shapes.length) % this.shapes.length;
+        this.targetGoblin.shape = this.shapes[nextIndex];
+        // Recalculate size like Goblin constructor switch
+        switch (this.targetGoblin.shape) {
+            case 'hippo':
+                this.targetGoblin.size = 35; break;
+            case 'blimp':
+            case 'stanley':
+            case 'grubby':
+                this.targetGoblin.size = 40; break;
+            case 'ricky':
+                this.targetGoblin.size = 45; break;
+            case 'manny':
+            default:
+                this.targetGoblin.size = 50; break;
+        }
+        sendMessage({ type: 'update', goblin: this.targetGoblin });
     }
 }
 

@@ -116,8 +116,12 @@ wss.on('connection', (socket, request) => {
             return;
         }
 
-        // Delegate message handling to the lobby
-        currentLobby.handleMessage(socket, message);
+        // Delegate message handling to the lobby safely
+        try {
+            currentLobby.handleMessage(socket, message);
+        } catch (e) {
+            console.error(`Error in lobby ${currentLobby.id} handleMessage:`, e?.stack || e);
+        }
     });
 
     socket.on('close', () => {

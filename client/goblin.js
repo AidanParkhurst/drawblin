@@ -39,6 +39,15 @@ class Goblin {
         // Animation properties
         this.shape = shape;
         this.size;
+        this.setSize();
+        this.walk_cycle = 0; // Walking animation cycle counter
+        this.walk_speed = 0.3; // Speed of the walking animation
+        this.bounce_height = 3; // How high the goblin bounces
+        this.tilt_angle = 5; // Maximum tilt angle in degrees
+        this.hasCrown = false; // crown display flag
+    }
+
+    setSize() {
         switch (this.shape) {
             case 'hippo':
                 this.size = 35;
@@ -58,13 +67,7 @@ class Goblin {
             default:
                 this.size = 50; // Default size
         }
-        this.walk_cycle = 0; // Walking animation cycle counter
-        this.walk_speed = 0.3; // Speed of the walking animation
-        this.bounce_height = 3; // How high the goblin bounces
-        this.tilt_angle = 5; // Maximum tilt angle in degrees
-        this.hasCrown = false; // crown display flag
     }
-
 
     // Helper function to compare colors (handles both arrays and primitives)
     colorsEqual(color1, color2) {

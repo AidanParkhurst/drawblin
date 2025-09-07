@@ -1,111 +1,197 @@
+// Context-aware prompt system for Guessing Game and QuickDraw
+// - quickdrawConcepts: used by QuickDraw
+// - phraseTemplates: templates with typed placeholders like (character), (ridable), (weapon)
+// - adjectives: generic adjectives used by (adj)
+// - lexicon: word bank with tags to enable contextual filling
 const prompts = {
-  "difficulty": {
-    "easy": [
-      "cat", "dog", "house", "tree", "car", "fish", "bird", "sun", "moon", "star",
-      "flower", "apple", "banana", "heart", "smile", "eye", "hand", "shoe", "hat",
-      "key", "door", "window", "book", "clock", "cake", "pizza"
-    ],
-    "medium": [
-      "ice cream", "robot", "dinosaur", "butterfly", "rainbow", "mountain", "ocean",
-      "castle", "rocket", "airplane", "bicycle", "guitar", "piano", "camera", "phone",
-      "computer", "pencil", "umbrella", "crown", "bridge", "lighthouse", "snowman",
-      "campfire", "tent", "balloon", "kite", "boat", "train", "bus", "truck"
-    ],
-    "hard": [
-      "centaur", "minotaur", "sphinx", "pegasus", "griffin", "kraken", "hydra",
-      "banshee", "gargoyle", "phoenix", "bigfoot", "yeti", "mothman"
-    ]
-  },
-  "categories": {
-    "animals": {
-      "pets": ["cat", "dog", "rabbit", "bird", "fish"],
-      "farm": ["cow", "pig", "sheep", "horse", "chicken"],
-      "wild": ["elephant", "lion", "tiger", "bear", "wolf", "fox", "deer"],
-      "african": ["elephant", "lion", "giraffe", "zebra", "rhino", "hippo"],
-      "ocean": ["whale", "shark", "octopus", "jellyfish", "starfish", "crab", "lobster", "seahorse", "turtle"],
-      "birds": ["eagle", "owl", "parrot", "penguin", "flamingo", "peacock", "toucan"],
-      "small": ["squirrel", "hedgehog", "spider", "bee", "ladybug", "frog", "snake"],
-      "exotic": ["panda", "koala", "monkey", "gorilla", "kangaroo", "sloth"],
-      "reptiles": ["lizard", "crocodile", "alligator", "turtle", "snake"]
-    },
-    "food": [
-      "apple", "banana", "pizza", "cake", "ice cream"
-    ],
-    "objects": {
-      "household": ["house", "door", "window", "clock", "key", "umbrella", "book"],
-      "clothing": ["shoe", "hat", "crown"],
-      "technology": ["phone", "computer", "camera", "robot"],
-      "music": ["guitar", "piano"],
-      "tools": ["pencil"]
-    },
-    "transportation": [
-      "car", "airplane", "bicycle", "boat", "train", "bus", "truck", "rocket"
-    ],
-    "nature": [
-      "tree", "flower", "sun", "moon", "star", "mountain", "ocean", "rainbow"
-    ],
-    "fantasy": {
-      "creatures": ["dragon", "unicorn", "phoenix", "mermaid", "fairy", "angel"],
-      "monsters": ["ghost", "vampire", "zombie", "alien", "monster", "demon"],
-      "mythical": ["centaur", "minotaur", "sphinx", "pegasus", "griffin", "kraken", "hydra", "banshee", "gargoyle"],
-      "cryptids": ["bigfoot", "yeti", "mothman"],
-      "beings": ["witch", "wizard", "genie", "mummy", "skeleton", "reaper", "devil"],
-      "races": ["giant", "dwarf", "elf", "goblin", "troll", "ogre"]
-    },
-    "people": {
-      "royalty": ["princess", "king", "queen", "knight"],
-      "professions": ["chef", "doctor", "teacher", "firefighter", "police", "astronaut", "farmer", "artist", "musician", "dancer", "athlete", "magician"],
-      "characters": ["pirate", "ninja", "superhero", "villain", "clown"]
-    },
-    "body": ["heart", "smile", "eye", "hand"],
-    "structures": ["house", "castle", "bridge", "lighthouse", "tent"],
-    "activities": ["campfire", "snowman"],
-    "toys": ["balloon", "kite"]
-  },
-  "themes": {
-    "halloween": ["ghost", "witch", "vampire", "zombie", "mummy", "skeleton", "reaper"],
-    "christmas": ["snowman", "tree", "angel"],
-    "space": ["rocket", "alien", "moon", "star", "astronaut"],
-    "underwater": ["whale", "shark", "octopus", "jellyfish", "starfish", "crab", "lobster", "seahorse", "mermaid"],
-    "medieval": ["castle", "knight", "princess", "king", "queen", "dragon", "wizard"],
-    "scary": ["monster", "demon", "devil", "ghost", "vampire", "zombie", "skeleton", "reaper"],
-    "cute": ["cat", "dog", "rabbit", "panda", "koala", "fairy", "unicorn"]
-  }
-}
-
-// Broad, open-ended concept prompts for QuickDraw (encourage scene interpretation)
-prompts.quickdrawConcepts = [
-  'love','winter','sports','celebration','speed','music','chaos','friendship','technology',
-  'nature','adventure','dreams','festival','storm','silence','growth','time','journey',
-  'memory','rebellion','world','desert oasis','future','haunted house',
-  'space colony','ancient ruins','marketplace','invention','island', 'escape', 'teamwork',
-  'mystery','balance','reflection','flight','gravity','ocean', 'forest spirits'
-];
-
-// Additional phrase-based prompt system for Guessing Game mode.
-// Each template may include the tokens (noun) and (adj) which will be
-// replaced at runtime with a random noun or adjective from the lists below.
-// Only the substituted (noun)/(adj) words are scored for players' guesses.
-prompts.phrases = {
-  templates: [
-  '(noun) jumping over a (adj) (noun)',
-  '(adj) (noun) riding a (noun)',
-  '(adj) (noun) eating a (noun)',
-  '(noun) wearing a (adj) (noun)',
-  '(noun) chasing a (adj) (noun)',
-  '(adj) (noun) playing with a (noun)',
-  '(adj) (noun) next to a (noun)',
-  '(adj) (noun) balancing on a (noun)',
-  '(adj) (noun) painting a (noun)',
-  '(adj) (noun) cooking a (noun)'
+  // Broad, open-ended concept prompts for QuickDraw (encourage scene interpretation)
+  quickdrawConcepts: [
+    'love','winter','sports','celebration','speed','music','chaos','friendship','technology',
+    'nature','adventure','dreams','festival','storm','silence','growth','time','journey',
+    'memory','rebellion','world','desert oasis','future','haunted house',
+    'space colony','ancient ruins','marketplace','invention','island','escape','teamwork',
+    'mystery','balance','reflection','flight','gravity','ocean','forest spirits'
   ],
-  // Basic word pools. These intentionally overlap with existing categories
-  // but are kept simple for template filling.
-  nouns: [
-    'wizard','dragon','unicorn','goblin','robot','pirate','ninja','astronaut','cat','dog','bird','fish','crab','turtle','bear','lion','tiger','ghost','vampire','zombie','skeleton','camera','robot','pencil','castle','bridge','rocket','pizza','cake','apple','banana','mermaid','giant','dwarf','elf','troll','ogre','witch','king','queen','princess','knight','monster','chef','doctor','teacher','artist','musician','dancer','athlete','genie','mummy','reaper','alien'
+
+  // Phrase templates for Guessing Game. Placeholders:
+  // - (adj) simple adjective
+  // - (noun) any lexicon entry
+  // - (tag) entry with that tag (e.g., (ridable), (character), (vehicle), (food))
+  // - OR use (tag1|tag2) and/or (tag1+tag2) for OR/AND tag filters
+  phraseTemplates: [
+    '(character) riding a (ridable)',
+    '(adj) (creature) fighting a (monster)',
+    '(animal) driving a (vehicle)',
+    '(person) wearing a (wearable)',
+    '(person) juggling (object)',
+    '(person) balancing on a (ridable)',
+    '(person) hiding in a (place)',
+    '(person) using a (tool) to fix a (object)',
+    '(person) building a (structure) with a (tool)',
+    '(person) cooking (food) in a (cookware)',
+    '(person) painting a (object)',
+    '(person) carrying (food) on a (ridable)',
+    '(person) eating (food) with a (utensil)',
+    '(animal) playing a (instrument)',
+    '(person) saving a (person)',
+    '(person) stuck in a (container)',
+    '(creature) breathing (element) at a (structure)',
+    'a stack of (object) on a (object)',
+    'a (adj) (object) bouncing on a (object)',
+    '(vehicle) parked next to a (structure)',
+    '(adj) (vehicle) flying over a (place)',
+    '(person) repairing a (vehicle) with a (tool)',
+    '(person) climbing a (structure)',
+    '(animal) wearing a (wearable)',
+    '(person) unlocking a (container) with a (tool)',
+    '(person) drawing a (object) with a (tool)',
+    '(person) washing a (object) in a (container)',
+    '(character) casting a spell on a (object)'
   ],
+
   adjectives: [
-    'old','young','happy','sad','angry','sleepy','tiny','huge','giant','fuzzy','slimy','spooky','shiny','rusty','colorful','striped','spotted','fierce','brave','sneaky','lazy','crazy','wild','magic','smart','silly','noisy','quiet','friendly','grumpy'
+    'ancient','tiny','huge','gigantic','mini','fluffy','spiky','slimy','shiny','rusty','colorful',
+    'striped','spotted','brave','sneaky','sleepy','grumpy','hungry','noisy','quiet','broken',
+    'invisible','glowing','golden','wooden','metal','plastic','fuzzy','happy','sad','angry'
+  ],
+
+  // Rich word bank with tags for contextual selection
+  // Add lots of specific and inanimate objects as requested
+  lexicon: [
+    // People and roles
+    { word: 'Einstein', tags: ['person','famous'] },
+    { word: 'Cleopatra', tags: ['person','famous'] },
+    { word: 'Shakespeare', tags: ['person','famous','writer'] },
+    { word: 'astronaut', tags: ['person','profession','character'] },
+    { word: 'pirate', tags: ['person','character'] },
+    { word: 'ninja', tags: ['person','character'] },
+    { word: 'superhero', tags: ['person','character'] },
+    { word: 'villain', tags: ['person','character'] },
+    { word: 'chef', tags: ['person','profession','chef'] },
+    { word: 'doctor', tags: ['person','profession'] },
+    { word: 'teacher', tags: ['person','profession'] },
+    { word: 'artist', tags: ['person','profession'] },
+    { word: 'musician', tags: ['person','profession','musician'] },
+    { word: 'farmer', tags: ['person','profession','farmer'] },
+    { word: 'dancer', tags: ['person','profession'] },
+    { word: 'athlete', tags: ['person','profession'] },
+    { word: 'cowboy', tags: ['person','character'] },
+    { word: 'detective', tags: ['person','profession','detective'] },
+    { word: 'baby', tags: ['person'] },
+
+    // Creatures and fantasy
+    { word: 'wizard', tags: ['character','creature','mythical'] },
+    { word: 'witch', tags: ['character','creature','mythical'] },
+    { word: 'dragon', tags: ['creature','monster','mythical','ridable'] },
+    { word: 'unicorn', tags: ['creature','mythical','ridable'] },
+    { word: 'mermaid', tags: ['creature','mythical'] },
+    { word: 'ghost', tags: ['creature','monster'] },
+    { word: 'zombie', tags: ['creature','monster'] },
+    { word: 'vampire', tags: ['creature','monster'] },
+    { word: 'goblin', tags: ['creature','monster'] },
+    { word: 'troll', tags: ['creature','monster'] },
+    { word: 'ogre', tags: ['creature','monster'] },
+    { word: 'giant', tags: ['creature','mythical'] },
+    { word: 'phoenix', tags: ['creature','mythical','bird'] },
+    { word: 'yeti', tags: ['creature','cryptid'] },
+    { word: 'bigfoot', tags: ['creature','cryptid'] },
+
+    // Animals
+    { word: 'cat', tags: ['animal','pet'] },
+    { word: 'dog', tags: ['animal','pet'] },
+    { word: 'horse', tags: ['animal','ridable'] },
+    { word: 'camel', tags: ['animal','ridable'] },
+    { word: 'elephant', tags: ['animal','ridable'] },
+    { word: 'lion', tags: ['animal'] },
+    { word: 'tiger', tags: ['animal'] },
+    { word: 'bear', tags: ['animal'] },
+    { word: 'eagle', tags: ['animal','bird'] },
+    { word: 'penguin', tags: ['animal','bird'] },
+    { word: 'octopus', tags: ['animal'] },
+    { word: 'whale', tags: ['animal','ridable'] },
+    { word: 'shark', tags: ['animal'] },
+
+    // Vehicles / ridables
+    { word: 'bicycle', tags: ['vehicle','ridable'] },
+    { word: 'motorcycle', tags: ['vehicle','ridable'] },
+    { word: 'scooter', tags: ['vehicle','ridable'] },
+    { word: 'skateboard', tags: ['vehicle','ridable'] },
+    { word: 'car', tags: ['vehicle','ridable'] },
+    { word: 'bus', tags: ['vehicle','ridable'] },
+    { word: 'train', tags: ['vehicle','ridable'] },
+    { word: 'boat', tags: ['vehicle','ridable'] },
+    { word: 'airplane', tags: ['vehicle','ridable'] },
+    { word: 'rocket', tags: ['vehicle','ridable','space'] },
+    { word: 'hoverboard', tags: ['vehicle','ridable'] },
+
+    // Food and kitchen
+    { word: 'pizza', tags: ['food','edible'] },
+    { word: 'cake', tags: ['food','edible','dessert'] },
+    { word: 'apple', tags: ['food','edible','fruit'] },
+    { word: 'banana', tags: ['food','edible','fruit'] },
+    { word: 'corn', tags: ['food','edible','plant'] },
+    { word: 'ice cream', tags: ['food','edible','dessert'] },
+    { word: 'pan', tags: ['cookware'] },
+    { word: 'pot', tags: ['cookware'] },
+    { word: 'spoon', tags: ['tool','utensil'] },
+    { word: 'fork', tags: ['tool','utensil'] },
+
+    // Objects / tools / instruments
+    { word: 'musket', tags: ['weapon','object'] },
+    { word: 'orchestra', tags: ['group','music'] },
+    { word: 'guitar', tags: ['instrument','music','object'] },
+    { word: 'piano', tags: ['instrument','music','object'] },
+    { word: 'violin', tags: ['instrument','music','object'] },
+    { word: 'drum', tags: ['instrument','music','object'] },
+    { word: 'microphone', tags: ['object','music','tool'] },
+    { word: 'camera', tags: ['object','technology'] },
+    { word: 'computer', tags: ['object','technology'] },
+    { word: 'phone', tags: ['object','technology'] },
+    { word: 'pencil', tags: ['object','tool'] },
+    { word: 'paintbrush', tags: ['object','tool'] },
+    { word: 'magnifying glass', tags: ['object','tool','clue'] },
+    { word: 'map', tags: ['object','clue'] },
+    { word: 'key', tags: ['object','tool'] },
+    { word: 'lock', tags: ['object'] },
+    { word: 'book', tags: ['object'] },
+    { word: 'lantern', tags: ['object','tool','light'] },
+    { word: 'sword', tags: ['weapon','object'] },
+    { word: 'shield', tags: ['object','armor'] },
+    { word: 'bow', tags: ['weapon','object'] },
+    { word: 'hammer', tags: ['object','tool'] },
+    { word: 'anvil', tags: ['object'] },
+    { word: 'stapler', tags: ['object','tool'] },
+    { word: 'microwave', tags: ['object','appliance'] },
+    { word: 'bookshelf', tags: ['object','furniture'] },
+    { word: 'vacuum', tags: ['object','appliance','tool'] },
+    { word: 'helmet', tags: ['wearable','object'] },
+    { word: 'crown', tags: ['wearable','object'] },
+    { word: 'hat', tags: ['wearable','object'] },
+    { word: 'shoes', tags: ['wearable','object'] },
+    { word: 'backpack', tags: ['wearable','container'] },
+    { word: 'box', tags: ['container','object'] },
+    { word: 'jar', tags: ['container','object'] },
+    { word: 'bucket', tags: ['container','object'] },
+
+    // Places / structures / materials / elements
+    { word: 'castle', tags: ['structure','place'] },
+    { word: 'bridge', tags: ['structure','place'] },
+    { word: 'lighthouse', tags: ['structure','place'] },
+    { word: 'house', tags: ['structure','place'] },
+    { word: 'forest', tags: ['place','nature'] },
+    { word: 'ocean', tags: ['place','nature'] },
+    { word: 'desert', tags: ['place','nature'] },
+    { word: 'volcano', tags: ['place','nature'] },
+    { word: 'cloud', tags: ['place','nature','ridable'] },
+    { word: 'comet', tags: ['space','object','ridable'] },
+    { word: 'fire', tags: ['element'] },
+    { word: 'ice', tags: ['element','material'] },
+    { word: 'stone', tags: ['material'] },
+    { word: 'wood', tags: ['material'] },
+    { word: 'metal', tags: ['material'] },
+
+    // Body parts and misc
+    { word: 'hair', tags: ['body_part'] },
   ]
 };
 

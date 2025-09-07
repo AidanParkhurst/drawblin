@@ -9,7 +9,7 @@ import Toolbelt from "./toolbelt.js";
 import { drawHeader, drawWaitingWithScoreboard } from './header.js';
 import { ws, connect, sendMessage } from "./network.js";
 import { assets } from "./assets.js";
-import { calculateUIColor } from "./colors.js";
+import { calculateUIColor, randomPaletteColor } from "./colors.js";
 import { ready as authReady, isAuthConfigured, getUser } from './auth.js';
 import { getProfileName, upsertProfileName } from './auth.js';
 import { generateGoblinName } from './names.js';
@@ -88,7 +88,7 @@ async function start() {
     you = new Goblin(
         width / 2,
         height / 2,
-        [random(255), random(255), random(255)],
+        randomPaletteColor(),
         true,
         -1,
         random(['manny', 'stanley', 'ricky', 'blimp', 'hippo', 'grubby']),
@@ -174,6 +174,14 @@ window.setup = async() => {
         if (newName !== you.name) {
             you.name = newName;
             sendMessage({ type: 'update', goblin: you });
+        }
+    });
+
+    // When UI color changes (e.g., via profile color picker), update any visible portals
+    window.addEventListener('ui:color-changed', (evt) => {
+        if (!Array.isArray(you?.ui_color)) return;
+        for (const p of portals) {
+            if (p && Array.isArray(p.color)) p.color = [...you.ui_color];
         }
     });
 }
@@ -415,7 +423,13 @@ function onopen() {
     // TODO: maybe useful to send an introductory message, once the goblin is loaded
 }
 function onmessage(event) {
-    const data = JSON.parse(event.data);
+    let data;
+    try {
+        data = JSON.parse(event.data);
+    } catch (e) {
+        console.error('Invalid JSON from server:', e);
+        return;
+    }
     // print(data);
     // Handle incoming messages from the server
     if (!data || !data.type) {
@@ -428,17 +442,20 @@ function onmessage(event) {
             // Handle chat messages
             if (data.userId) {
                 let chatUser = goblins.find(g => g.id === data.userId);
-                chatUser.say(data.content);
-                chat.messages.push({user: chatUser, content: data.content});
-                if (data.guessed && Array.isArray(data.guessed)) {
+                if (chatUser && typeof chatUser.say === 'function') {
+                    chatUser.say(data.content);
+                    chat.messages.push({ user: chatUser, content: data.content });
+                } else {
+                    chat.messages.push({ user: null, content: data.content });
+                }
+                if (data.guessed && Array.isArray(data.guessed) && typeof guessed_words !== 'undefined' && guessed_words && typeof guessed_words.add === 'function') {
                     for (const g of data.guessed) {
                         if (g.guessed) guessed_words.add(g.word);
                     }
                 }
-
             } else {
-                chat.messages.push({user: null, content: data.content});
-                if (data.guessed && Array.isArray(data.guessed)) {
+                chat.messages.push({ user: null, content: data.content });
+                if (data.guessed && Array.isArray(data.guessed) && typeof guessed_words !== 'undefined' && guessed_words && typeof guessed_words.add === 'function') {
                     for (const g of data.guessed) {
                         if (g.guessed) guessed_words.add(g.word);
                     }
@@ -450,18 +467,25 @@ function onmessage(event) {
             const goblin = goblins.find(g => g.id === data.goblin.id);
             if (!goblin) {
                 // If the goblin doesn't exist, create a new one
-                goblins.push(new Goblin(data.goblin.x, data.goblin.y, data.goblin.color, false, data.goblin.id, data.goblin.shape, data.goblin.name || ''));
+                const color = Array.isArray(data.goblin.color) && data.goblin.color.length===3 ? data.goblin.color : randomPaletteColor();
+                goblins.push(new Goblin(data.goblin.x, data.goblin.y, color, false, data.goblin.id, data.goblin.shape, data.goblin.name || ''));
                 return;
             }
             if (goblin) {
                 // TODO: Prob shouldn't be accessing _values, but otherwise it doesnt work
                 goblin.x = data.goblin.x;
                 goblin.y = data.goblin.y;
-                goblin.cursor = createVector(data.goblin.cursor._values[0], data.goblin.cursor._values[1]);
-                goblin.color = data.goblin.color;
+                if (data.goblin.cursor && Array.isArray(data.goblin.cursor._values)) {
+                    goblin.cursor = createVector(data.goblin.cursor._values[0], data.goblin.cursor._values[1]);
+                } else if (data.goblin.cursor && typeof data.goblin.cursor.x === 'number' && typeof data.goblin.cursor.y === 'number') {
+                    goblin.cursor = createVector(data.goblin.cursor.x, data.goblin.cursor.y);
+                }
+                goblin.color = (Array.isArray(data.goblin.color) && data.goblin.color.length===3) ? data.goblin.color : goblin.color;
                 goblin.ui_color = data.goblin.ui_color;
                 goblin.tool = data.goblin.tool || 'brush'; // Update tool, default to brush if not provided
                 goblin.name = data.goblin.name || goblin.name || '';
+                goblin.shape = data.goblin.shape || goblin.shape || 'manny';
+                goblin.setSize();
                 if (goblin.lines.length !== data.goblin.lines.length) {
                     goblin.lines = [];
                     for (let i = 0; i < data.goblin.lines.length; i++) {

@@ -18,7 +18,7 @@ class PlayerList {
         // Only handle goblin hover/click if profile display is not visible
         if (!this.profileDisplay.visible) {
             var hovered_goblin = this.checkHover(mouseX, mouseY);
-            if (hovered_goblin) {
+            if (hovered_goblin && hovered_goblin.id === you.id) {
                 cursor('pointer'); // Change cursor to pointer when hovering over a goblin
                 if (mouseIsPressed) {
                     // Calculate the position of the clicked goblin's icon
