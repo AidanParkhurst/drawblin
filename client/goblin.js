@@ -45,6 +45,9 @@ class Goblin {
         this.bounce_height = 3; // How high the goblin bounces
         this.tilt_angle = 5; // Maximum tilt angle in degrees
         this.hasCrown = false; // crown display flag
+
+    // Tool options
+    this.eraserRadius = 15; // default eraser radius in pixels
     }
 
     setSize() {
@@ -241,10 +244,16 @@ class Goblin {
     display_cursor() {
         push();
         
-        // Fill this circle with the goblin's color, but more transparent
-        fill(this.color[0], this.color[1], this.color[2], 100);
-        noStroke();
-        ellipse(this.cursor.x, this.cursor.y, 20);
+        if (this.tool === 'eraser') {
+            fill(this.color[0], this.color[1], this.color[2], 100);
+            noStroke();
+            ellipse(this.cursor.x, this.cursor.y, this.eraserRadius * 2);
+        } else {
+            // Cursor dot
+            fill(this.color[0], this.color[1], this.color[2], 100);
+            noStroke();
+            ellipse(this.cursor.x, this.cursor.y, 20);
+        }
 
         pop();
     }

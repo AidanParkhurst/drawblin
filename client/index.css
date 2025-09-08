@@ -154,6 +154,11 @@ body {
     border-radius: 10px;
     background: rgba(255,255,255,0.0);
     outline: none;
+    transition: 0.2s all;
+}
+
+#chat .chat__input:hover {
+    border-color: var(--chat-border-hover, rgba(30,30,30,0.2));
 }
 
 #chat .chat__input::placeholder {

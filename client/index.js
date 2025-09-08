@@ -35,7 +35,7 @@ let results = [];
 // drawing vars
 let drawing = false;
 let last_mouse = { x: 0, y: 0 };
-let line_granularity = 10; // How many pixels between each line point
+let line_granularity = 5; // How many pixels between each line point
 let last_line_count = 0;
 
 // networking
@@ -61,6 +61,29 @@ function lineIntersect(line1Start, line1End, line2Start, line2End) {
     const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
     
     return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+}
+
+// Distance utilities for radius-based eraser
+function _clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+function _dist2(a, b) { const dx = a.x - b.x, dy = a.y - b.y; return dx*dx + dy*dy; }
+function pointSegmentDistance(p, v, w) {
+    // Return the distance from point p to segment vw
+    const l2 = _dist2(v, w);
+    if (l2 === 0) return Math.sqrt(_dist2(p, v)); // v == w
+    const t = _clamp(((p.x - v.x)*(w.x - v.x) + (p.y - v.y)*(w.y - v.y)) / l2, 0, 1);
+    const proj = { x: v.x + t * (w.x - v.x), y: v.y + t * (w.y - v.y) };
+    return Math.sqrt(_dist2(p, proj));
+}
+function segmentSegmentDistance(p1, q1, p2, q2) {
+    // If segments intersect, distance is zero
+    if (lineIntersect(p1, q1, p2, q2)) return 0;
+    // Otherwise, min of endpoint-to-segment distances
+    return Math.min(
+        pointSegmentDistance(p1, p2, q2),
+        pointSegmentDistance(q1, p2, q2),
+        pointSegmentDistance(p2, p1, q1),
+        pointSegmentDistance(q2, p1, q1)
+    );
 }
 
 async function start() {
@@ -227,18 +250,18 @@ window.draw = () => {
         if (dist(you.cursor.x, you.cursor.y, last_mouse.x, last_mouse.y) < line_granularity) return; // Skip if the mouse hasn't moved enough
         
         if (you.tool === 'eraser') {
-            // Eraser logic: remove lines that intersect with the eraser path
+            // Eraser logic: remove lines that are within a radius of the eraser path
             const eraserLine = {
                 start: createVector(last_mouse.x, last_mouse.y),
                 end: createVector(you.cursor.x, you.cursor.y)
             };
             
-            // Check each line for intersection with eraser path
+            const radius = typeof you.eraserRadius === 'number' ? you.eraserRadius : 15;
+            // Check each line for proximity to the eraser path
             for (let i = you.lines.length - 1; i >= 0; i--) {
                 const line = you.lines[i];
-                if (lineIntersect(eraserLine.start, eraserLine.end, line.start, line.end)) {
-                    you.lines.splice(i, 1); // Remove the intersected line
-                }
+                const d = segmentSegmentDistance(eraserLine.start, eraserLine.end, line.start, line.end);
+                if (d <= radius) you.lines.splice(i, 1);
             }
         } else {
             // Regular brush/drawing logic
