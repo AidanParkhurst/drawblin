@@ -104,3 +104,93 @@ body {
 #account-menu .account-menu__action--danger {
     color: #a11;
 }
+
+/* Chat overlay */
+#chat {
+    position: fixed;
+    left: 12px;
+    bottom: 12px;
+    z-index: 900; /* under account menu/login */
+
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    padding: 10px;
+    border-radius: 12px;
+    border: 3px dashed var(--chat-border, rgba(30,30,30,0.05));
+    background: rgba(255,255,255,0.0);
+    backdrop-filter: blur(0px);
+
+    font-family: 'Neucha';
+}
+
+#chat:hover {
+    border-color: var(--chat-border-hover, rgba(30,30,30,0.2));
+}
+
+
+#chat .chat__messages {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding-right: 4px; /* a bit of space from scrollbar */
+}
+
+#chat .chat__message {
+    font-size: 18px;
+    line-height: 1.2;
+    color: var(--chat-text, rgba(30,30,30,0.8));
+    word-wrap: break-word;
+}
+
+#chat .chat__input {
+    width: 100%;
+    box-sizing: border-box;
+    font-family: 'Neucha';
+    font-size: 18px;
+    color: var(--chat-text, rgba(30,30,30,0.9));
+    padding: 8px 10px;
+    border: 3px dashed var(--chat-border, rgba(30,30,30,0.05));
+    border-radius: 10px;
+    background: rgba(255,255,255,0.0);
+    outline: none;
+}
+
+#chat .chat__input::placeholder {
+    color: rgba(30,30,30,0.4);
+}
+
+/* Toggle button styling */
+#chat .chat__toggle {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    padding: 0 6px;
+    height: 24px;
+    border: 3px dashed var(--chat-border, rgba(30,30,30,0.05));
+    border-radius: 10px;
+    background: rgba(255,255,255,0);
+    color: var(--chat-text, rgba(30,30,30,0.8));
+    font-family: 'Neucha';
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    z-index: 1;
+}
+
+/* Keep the toggle pinned nicely when collapsed */
+#chat.chat--collapsed .chat__toggle {
+    top: -8px;
+    right: -6px;
+}
+
+/* Collapsed state */
+#chat.chat--collapsed {
+    width: auto !important;
+    height: auto !important;
+    padding: 6px;
+}
+#chat.chat--collapsed .chat__messages,
+#chat.chat--collapsed .chat__input {
+    display: none;
+}

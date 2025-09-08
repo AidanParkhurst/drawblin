@@ -1,58 +1,183 @@
-import Input from "./input_box.js";
-import { you, goblins } from "./index.js"; // Import the goblin object
-import {assets} from "./assets.js"; // Import assets for the chat
+import { sendMessage } from "./network.js";
+import { you, goblins } from "./index.js";
 
+// HTML-based Chat overlay that sits atop the canvas (bottom-right)
 class Chat {
-    constructor(height = 200, width = 400) {
+    constructor({ height = 180, width = 360 } = {}) {
+        // Data
         this.messages = [];
-        this.height = height;
-        this.width = width;
-        this.max_messages = 7; // Maximum number of messages to display
-        this.input = new Input(20, windowHeight - height + (height - 60), width, 40, this);
+        this.max_messages = 100; // keep a decent backlog in DOM
+
+        // DOM elements
+        this.container = null;
+        this.messagesEl = null;
+        this.inputEl = null;
+        this.hover = false;
+
+        // Build UI once
+        this.#mount(width, height);
+        this.#attachGlobalHandlers();
+        this.#applyUIColor();
     }
 
-    // every frame
-    update() {
-        this.display();
-        this.input.update();
+    // No-op for compatibility with old p5 loop
+    update() {}
+
+    // Keep method for compatibility with old code
+    moveInput() {}
+
+    // Returns true if chat is focused or hovered
+    isMouseInteracting() {
+        return document.activeElement === this.inputEl || this.hover;
+    }
+
+    // Public API used by index.js when messages arrive from server
+    addMessage({ user, content }) {
+        this.messages.push({ user, content });
         if (this.messages.length > this.max_messages) {
             this.messages.splice(0, this.messages.length - this.max_messages);
         }
+        this.#renderMessage(user, content);
     }
 
-    display() {
-        push();
+    // Send local message: show speech bubble and send to server (wait for echo; don't add locally)
+    sendLocal(text) {
+        const msg = (text || "").trim();
+        if (!msg) return;
+        try {
+            // local say bubble
+            if (you && typeof you.say === 'function') you.say(msg);
+            // network send
+            sendMessage({ type: 'chat', content: msg });
+        } finally {
+            this.inputEl.value = '';
+            this.#blurInput();
+        }
+    }
 
-        // overall chat box
-        drawingContext.setLineDash([40, 20]); // Set dashed line style
-        stroke(you.ui_color[0], you.ui_color[1], you.ui_color[2], 10);
-        strokeWeight(5);
-        fill(0, 0, 0, 0);
-        rect(20, windowHeight - this.height - 20, this.width, this.height, 5);
-        noStroke();
-        textSize(24);
-
-        // Message display bottom to top
-        for (let i = 0; i < this.messages.length; i++) {
-            var chatter_color = this.messages[i].user ? this.messages[i].user.ui_color : [0, 0, 0];
-            fill(chatter_color[0], chatter_color[1], chatter_color[2], 150); // Semi-transparent background
-            let y = windowHeight - this.height + 10 + i * 20;
-            text(this.messages[i].content, 30, y);
+    // ----- Private helpers -----
+    #mount(width, height) {
+        // Avoid duplicate mount
+        if (document.getElementById('chat')) {
+            this.container = document.getElementById('chat');
+            this.messagesEl = this.container.querySelector('.chat__messages');
+            this.inputEl = this.container.querySelector('.chat__input');
+            return;
         }
 
-        pop();
+        const container = document.createElement('div');
+        container.id = 'chat';
+        container.style.width = `${width}px`;
+        container.style.height = `${height}px`;
+        container.innerHTML = `
+            <button class="chat__toggle" aria-expanded="true" title="Collapse chat">▾</button>
+            <div class="chat__messages" aria-live="polite" aria-label="Chat messages"></div>
+            <input class="chat__input" type="text" placeholder="Press Enter or Click Here to Chat" maxlength="240" aria-label="Type a message" />
+        `;
+        document.body.appendChild(container);
+
+        // Cache refs
+        this.container = container;
+    this.messagesEl = container.querySelector('.chat__messages');
+    this.inputEl = container.querySelector('.chat__input');
+    this.toggleEl = container.querySelector('.chat__toggle');
+
+        // Stop canvas/p5 events when interacting with chat
+        const stop = (e) => { e.stopPropagation(); };
+        ['mousedown', 'mouseup', 'click', 'touchstart', 'touchend', 'pointerdown', 'pointerup'].forEach(evt => {
+            container.addEventListener(evt, stop);
+            this.inputEl.addEventListener(evt, stop);
+        });
+
+        // Track hover state
+        container.addEventListener('mouseenter', () => { this.hover = true; });
+        container.addEventListener('mouseleave', () => { this.hover = false; });
+
+        // Submit on Enter
+        this.inputEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                this.sendLocal(this.inputEl.value);
+            } else if (e.key === 'Escape') {
+                this.#blurInput();
+            }
+        });
+
+    // Freeze movement while typing (handle mouse-click focus/blur too)
+    this.inputEl.addEventListener('focus', () => { if (you) you.frozen = true; });
+    this.inputEl.addEventListener('blur', () => { if (you) you.frozen = false; });
+
+        if (this.toggleEl) {
+            this.toggleEl.addEventListener('click', (e) => {
+                e.preventDefault();
+                const collapsed = this.container.classList.toggle('chat--collapsed');
+                this.toggleEl.setAttribute('aria-expanded', String(!collapsed));
+                this.toggleEl.textContent = collapsed ? '▸' : '▾';
+            });
+        }
     }
 
-    moveInput(windowWidth, windowHeight) {
-        // Move the input box to the bottom of the chat box
-        this.input.x = 20;
-        this.input.y = windowHeight - this.height + (this.height - 60);
-        this.input.width = this.width;
+    #attachGlobalHandlers() {
+        // Focus input when pressing Enter anywhere (unless typing in another input/textarea)
+        window.addEventListener('keydown', (e) => {
+            const target = e.target;
+            const tag = (target && target.tagName) ? target.tagName.toLowerCase() : '';
+            if (e.key === 'Enter' && tag !== 'input' && tag !== 'textarea') {
+                e.preventDefault();
+                this.#focusInput();
+            }
+        });
+
+        // React to UI color changes (optional event fired elsewhere)
+        window.addEventListener('ui:color-changed', () => this.#applyUIColor());
     }
 
-    // Check if mouse is interacting with chat UI elements
-    isMouseInteracting() {
-        return this.input.contains(mouseX, mouseY);
+    #applyUIColor() {
+        if (!you || !Array.isArray(you.ui_color)) return;
+        const [r, g, b] = you.ui_color;
+        const border = `rgba(${r}, ${g}, ${b}, 0.2)`;
+        const borderHover = `rgba(${r}, ${g}, ${b}, 0.2)`;
+        this.container.style.borderColor = border;
+        this.container.style.setProperty('--chat-border', border);
+        this.container.style.setProperty('--chat-border-hover', borderHover);
+        this.container.style.setProperty('--chat-text', `rgba(${r}, ${g}, ${b}, 0.8)`);
+        if (this.inputEl) {
+            this.inputEl.style.borderColor = border;
+            this.inputEl.style.color = `rgba(${r}, ${g}, ${b}, 0.8)`;
+        }
+    }
+
+    #focusInput() {
+        if (!this.inputEl) return;
+        if (this.container?.classList.contains('chat--collapsed') && this.toggleEl) {
+            this.container.classList.remove('chat--collapsed');
+            this.toggleEl.setAttribute('aria-expanded', 'true');
+            this.toggleEl.textContent = '▾';
+        }
+        this.inputEl.focus();
+        // Freeze movement while typing
+        if (you) you.frozen = true;
+    }
+    #blurInput() {
+        if (!this.inputEl) return;
+        this.inputEl.blur();
+        if (you) you.frozen = false;
+    }
+
+    #renderMessage(user, content) {
+        if (!this.messagesEl) return;
+        const el = document.createElement('div');
+        el.className = 'chat__message';
+        let color = 'rgba(30,30,30,0.8)';
+        if (user && Array.isArray(user.ui_color)) {
+            const [r, g, b] = user.ui_color;
+            color = `rgba(${r}, ${g}, ${b}, 0.8)`;
+        }
+        el.style.color = color;
+        el.textContent = content;
+        this.messagesEl.appendChild(el);
+        // Auto-scroll to bottom
+        this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
     }
 }
 

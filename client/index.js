@@ -194,7 +194,7 @@ window.windowResized = () => {
     portals[1].y = height / 2 - 200;
     portals[2].x = width / 2 - 400;
     portals[2].y = height / 2 - 200;
-    chat.moveInput(windowWidth, windowHeight);
+    // no-op with HTML chat; kept for compatibility
 }
 
 window.draw = () => {
@@ -218,6 +218,7 @@ window.draw = () => {
         guessinggame_update(deltaTime);
     }
 
+    // HTML chat doesn't need per-frame drawing, but keep call for compatibility
     chat.update();
     playerList.update();
     toolbelt.update();
@@ -398,13 +399,21 @@ window.mouseReleased = () => {
 
 window.keyPressed = () => {
     hasInput = true; // Set hasInput to true when the user presses a key
-    chat.input.keyPressed(keyCode);
+    // With HTML chat, Enter is handled via DOM listeners in chat.js
 }
 
 window.addEventListener('keydown', (event) => {
+    const t = event.target;
+    const tag = t && t.tagName ? t.tagName.toLowerCase() : '';
+    const typing = tag === 'input' || tag === 'textarea' || (t && t.isContentEditable);
+    if (typing) return; // do not capture WASD when typing in chat/input
     you.keyStates[event.key] = true;
 });
 window.addEventListener('keyup', (event) => {
+    const t = event.target;
+    const tag = t && t.tagName ? t.tagName.toLowerCase() : '';
+    const typing = tag === 'input' || tag === 'textarea' || (t && t.isContentEditable);
+    if (typing) return; // ignore keyup from typing contexts
     you.keyStates[event.key] = false; // Reset the key state when the key is
 });
 
@@ -444,9 +453,9 @@ function onmessage(event) {
                 let chatUser = goblins.find(g => g.id === data.userId);
                 if (chatUser && typeof chatUser.say === 'function') {
                     chatUser.say(data.content);
-                    chat.messages.push({ user: chatUser, content: data.content });
+                    if (chat && typeof chat.addMessage === 'function') chat.addMessage({ user: chatUser, content: data.content });
                 } else {
-                    chat.messages.push({ user: null, content: data.content });
+                    if (chat && typeof chat.addMessage === 'function') chat.addMessage({ user: null, content: data.content });
                 }
                 if (data.guessed && Array.isArray(data.guessed) && typeof guessed_words !== 'undefined' && guessed_words && typeof guessed_words.add === 'function') {
                     for (const g of data.guessed) {
@@ -454,7 +463,7 @@ function onmessage(event) {
                     }
                 }
             } else {
-                chat.messages.push({ user: null, content: data.content });
+                if (chat && typeof chat.addMessage === 'function') chat.addMessage({ user: null, content: data.content });
                 if (data.guessed && Array.isArray(data.guessed) && typeof guessed_words !== 'undefined' && guessed_words && typeof guessed_words.add === 'function') {
                     for (const g of data.guessed) {
                         if (g.guessed) guessed_words.add(g.word);
@@ -545,9 +554,14 @@ function onmessage(event) {
                 game_state = data.state;
             }
             else if (lobby_type === 'guessinggame') {
-        if (data.state === 'waiting') {
+                if (data.state === 'waiting') {
                     timer = data.time;
                 } else if (data.state === 'drawing') {
+                    if (game_state === 'waiting' && last_winner !== -1) {
+                        for (let goblin of goblins) {
+                            goblin.lines = []; // Clear lines for all goblins
+                        }
+                    }
                     current_artist = data.artistId;
                     // if you are the artist, you received the prompt
                     if (you.id === current_artist) {
@@ -556,8 +570,8 @@ function onmessage(event) {
                         }
                         prompt = data.prompt;
                     } else {
-            // otherwise you just receive masked prompt already in data.prompt
-            prompt = data.prompt;
+                        // otherwise you just receive masked prompt already in data.prompt
+                        prompt = data.prompt;
                     }
                     timer = data.time;
                 } else if (data.state === 'reveal') {
