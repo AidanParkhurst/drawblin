@@ -18,6 +18,7 @@ const server = http.createServer((req, res) => {
             <li><strong>/freedraw</strong> - Free drawing lobbies</li>
             <li><strong>/quickdraw</strong> - Quick draw challenge lobbies</li>
             <li><strong>/guessinggame</strong> - Guessing game lobbies</li>
+            <li><strong>/house?u=OWNER_UID</strong> - Private "House" lobbies owned by a user</li>
         </ul>
     `);
 });
@@ -27,7 +28,7 @@ const wss = new WebSocketServer({
     verifyClient: (info) => {
         // Parse the URL to get the path
         const pathname = url.parse(info.req.url).pathname;
-        const validPaths = ['/freedraw', '/quickdraw', '/guessinggame'];
+        const validPaths = ['/freedraw', '/quickdraw', '/guessinggame', '/house'];
         
         if (!validPaths.includes(pathname)) {
             console.log(`Rejected connection to invalid path: ${pathname}`);
@@ -41,6 +42,20 @@ const wss = new WebSocketServer({
 const lobbies = new Map(); // lobbyId -> Lobby
 const socketToLobby = new Map(); // socket -> lobbyId
 let nextLobbyId = 1;
+
+// House lobby ownership maps (keyed by short owner slug)
+const houseOwnerToLobbyId = new Map(); // ownerSlug -> lobbyId
+const lobbyIdToHouseOwner = new Map(); // lobbyId -> ownerSlug
+// Track whether the owner is currently connected to a given house lobby
+const ownerSocketsByLobby = new Map(); // lobbyId -> Set<WebSocket>
+const socketIsHouseOwner = new WeakMap(); // socket -> boolean
+
+// Deterministically abbreviate a Supabase UUID to a short slug (lowercase hex, no dashes)
+function shortUid(uid, len = 12) {
+    if (!uid || typeof uid !== 'string') return '';
+    const hex = uid.toLowerCase().replace(/-/g, '');
+    return hex.slice(0, Math.max(1, Math.min(len, hex.length)));
+}
 
 function findOrCreateLobby(lobbyType = 'freedraw') {
     // Find first non-full lobby of the specified type
@@ -75,7 +90,8 @@ function findOrCreateLobby(lobbyType = 'freedraw') {
 
 wss.on('connection', (socket, request) => {
     // Parse the URL to determine lobby type
-    const pathname = url.parse(request.url).pathname;
+    const parsed = url.parse(request.url, true);
+    const pathname = parsed.pathname;
     let lobbyType;
     
     switch (pathname) {
@@ -88,6 +104,9 @@ wss.on('connection', (socket, request) => {
         case '/guessinggame':
             lobbyType = 'guessinggame';
             break;
+        case '/house':
+            lobbyType = 'house';
+            break;
         default:
             // This shouldn't happen due to verifyClient, but just in case
             lobbyType = 'freedraw';
@@ -95,11 +114,87 @@ wss.on('connection', (socket, request) => {
     }
 
     // Assign client to a lobby of the specified type
-    const lobby = findOrCreateLobby(lobbyType);
+    let lobby;
+    if (lobbyType === 'house') {
+            const ownerSlug = (parsed.query && typeof parsed.query.u === 'string') ? parsed.query.u.trim() : '';
+        const requesterUid = (parsed.query && typeof parsed.query.me === 'string') ? parsed.query.me.trim() : '';
+        if (!ownerSlug) {
+            try { socket.close(1008, 'Missing owner uid'); } catch {}
+            return;
+        }
+        // Determine if this connecting client is the house owner (match short slug of requester)
+            const isOwner = requesterUid && shortUid(requesterUid) === ownerSlug;
+
+        // Existing lobby for this owner?
+    const existingId = houseOwnerToLobbyId.get(ownerSlug);
+        if (isOwner) {
+            // Owner can create or join their own lobby
+            if (existingId && lobbies.has(existingId)) {
+                lobby = lobbies.get(existingId);
+            } else {
+                lobby = new FreeDrawLobby(nextLobbyId++);
+                // Annotate as a house lobby
+                lobby.houseOwnerUid = ownerSlug;
+                lobbies.set(lobby.id, lobby);
+                houseOwnerToLobbyId.set(ownerSlug, lobby.id);
+                lobbyIdToHouseOwner.set(lobby.id, ownerSlug);
+                console.log(`Created new house (freedraw) lobby ${lobby.id} for owner ${ownerSlug}`);
+            }
+        } else {
+            // Guest can only join if the lobby exists AND owner is present
+            if (!existingId || !lobbies.has(existingId)) {
+                try { socket.send(JSON.stringify({ type: 'house_unavailable', reason: 'not_found' })); } catch {}
+                try { socket.close(1008, 'House not available'); } catch {}
+                return;
+            }
+            lobby = lobbies.get(existingId);
+            const owners = ownerSocketsByLobby.get(existingId);
+            if (!owners || owners.size === 0) {
+                try { socket.send(JSON.stringify({ type: 'house_unavailable', reason: 'owner_not_home' })); } catch {}
+                try { socket.close(1008, 'Owner not present'); } catch {}
+                return;
+            }
+        }
+    } else {
+        lobby = findOrCreateLobby(lobbyType);
+    }
+
     lobby.addClient(socket);
     socketToLobby.set(socket, lobby.id);
 
+    // If this is a house lobby, mark owner presence if applicable
+    if (lobbyType === 'house') {
+        const ownerSlug = lobbyIdToHouseOwner.get(lobby.id);
+        const requesterUid = (parsed.query && typeof parsed.query.me === 'string') ? parsed.query.me.trim() : '';
+        const isOwner = ownerSlug && requesterUid && shortUid(requesterUid) === ownerSlug;
+        if (isOwner) {
+            let set = ownerSocketsByLobby.get(lobby.id);
+            if (!set) {
+                set = new Set();
+                ownerSocketsByLobby.set(lobby.id, set);
+            }
+            set.add(socket);
+            socketIsHouseOwner.set(socket, true);
+        } else {
+            socketIsHouseOwner.set(socket, false);
+        }
+    }
+
     console.log(`New client connected to ${lobbyType} lobby ${lobby.id} via ${pathname}`);
+
+    // If this is a house lobby, immediately inform the client of the current mode
+    if (lobbyType === 'house') {
+        let mode = 'freedraw';
+        if (lobby instanceof QuickDrawLobby) mode = 'quickdraw';
+        else if (lobby instanceof GuessingGameLobby) mode = 'guessinggame';
+        try {
+            if (socket.readyState === 1 || socket.readyState === socket.OPEN) {
+                socket.send(JSON.stringify({ type: 'house_mode', mode }));
+            }
+        } catch (e) {
+            console.error('Failed to send initial house_mode:', e?.message || e);
+        }
+    }
 
     socket.on('message', data => {
         const currentLobby = lobbies.get(socketToLobby.get(socket));
@@ -116,6 +211,26 @@ wss.on('connection', (socket, request) => {
             return;
         }
 
+        // House-only: allow owner to switch the lobby mode between freedraw/quickdraw/guessinggame
+        if (message && message.type === 'house_switch_mode') {
+            const target = (message.mode || '').toString().toLowerCase();
+            const allowed = ['freedraw', 'quickdraw', 'guessinggame'];
+            if (!allowed.includes(target)) return;
+                const ownerSlug = lobbyIdToHouseOwner.get(currentLobby.id);
+                if (!ownerSlug) return; // not a house lobby
+                const requesterUid = (message.requesterUid || '').toString();
+                if (!requesterUid || shortUid(requesterUid) !== ownerSlug) {
+                console.warn(`Rejected house_switch_mode by non-owner in lobby ${currentLobby.id}`);
+                return;
+            }
+            try {
+                switchHouseLobbyType(currentLobby, target);
+            } catch (e) {
+                console.error('Failed to switch house lobby type:', e?.stack || e);
+            }
+            return; // do not forward this control message to game handlers
+        }
+
         // Delegate message handling to the lobby safely
         try {
             currentLobby.handleMessage(socket, message);
@@ -130,11 +245,30 @@ wss.on('connection', (socket, request) => {
             const lobby = lobbies.get(lobbyId);
             if (lobby) {
                 lobby.removeClient(socket);
+                // Track owner presence for house lobbies
+                const ownerSlug = lobbyIdToHouseOwner.get(lobbyId);
+                if (ownerSlug) {
+                    if (socketIsHouseOwner.get(socket) === true) {
+                        const set = ownerSocketsByLobby.get(lobbyId);
+                        if (set) {
+                            set.delete(socket);
+                            if (set.size === 0) ownerSocketsByLobby.delete(lobbyId);
+                        }
+                    }
+                    socketIsHouseOwner.delete(socket);
+                }
                 
                 // Clean up empty lobbies (optional - you might want to keep them for a while)
                 if (lobby.clients.size === 0) {
-                    if (lobby.gameTimer) {
+                    if (typeof lobby.stopGameLoop === 'function' && lobby.gameTimer) {
                         lobby.stopGameLoop(); // Stop any ongoing game loop
+                    }
+                    // If it's a house lobby, clear mappings
+                    const ownerSlug2 = lobbyIdToHouseOwner.get(lobbyId);
+                    if (ownerSlug2) {
+                        houseOwnerToLobbyId.delete(ownerSlug2);
+                        lobbyIdToHouseOwner.delete(lobbyId);
+                        ownerSocketsByLobby.delete(lobbyId);
                     }
                     lobbies.delete(lobbyId);
                     console.log(`Removed empty lobby ${lobbyId}`);
@@ -145,6 +279,38 @@ wss.on('connection', (socket, request) => {
         console.log('Client disconnected');
     });
 });
+
+// Create a new lobby of desired type with the SAME id and migrate clients
+function switchHouseLobbyType(oldLobby, targetType) {
+    const id = oldLobby.id;
+    let newLobby;
+    if (targetType === 'quickdraw') {
+        newLobby = new QuickDrawLobby(id);
+    } else if (targetType === 'guessinggame') {
+        newLobby = new GuessingGameLobby(id);
+    } else {
+        newLobby = new FreeDrawLobby(id);
+    }
+    // Preserve house ownership
+    const ownerSlug = lobbyIdToHouseOwner.get(id);
+    if (ownerSlug) newLobby.houseOwnerUid = ownerSlug;
+
+    // Replace in registry BEFORE migrating to ensure lookups resolve
+    lobbies.set(id, newLobby);
+
+    // Migrate clients
+    for (const client of oldLobby.clients) {
+        newLobby.addClient(client);
+        socketToLobby.set(client, id);
+    }
+    // Old timers off
+    if (typeof oldLobby.stopGameLoop === 'function' && oldLobby.gameTimer) {
+        oldLobby.stopGameLoop();
+    }
+    // Announce mode change to clients so UI can adapt
+    newLobby.broadcast({ type: 'house_mode', mode: targetType });
+    console.log(`House lobby ${id} switched to ${targetType}`);
+}
 
 server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);

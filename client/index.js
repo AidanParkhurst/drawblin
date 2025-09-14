@@ -8,10 +8,10 @@ import PlayerList from "./players.js";
 import Toolbelt from "./toolbelt.js";
 import { drawHeader, drawWaitingWithScoreboard } from './header.js';
 import { ws, connect, sendMessage } from "./network.js";
+import { mountHouseControls, updateHouseControlsVisibility, onHouseModeSelected, setHouseMode } from './house_controls.js';
 import { assets } from "./assets.js";
 import { calculateUIColor, randomPaletteColor } from "./colors.js";
-import { ready as authReady, isAuthConfigured, getUser } from './auth.js';
-import { getProfileName, upsertProfileName } from './auth.js';
+import { ready as authReady, isAuthConfigured, getUser, getProfileName, upsertProfileName } from './auth.js';
 import { generateGoblinName } from './names.js';
 
 // -- Game State Initialization --
@@ -22,6 +22,7 @@ let toolbelt;
 let goblins = [];
 let header = "";
 let lobby_type = 'freedraw'; // Default lobby type
+let house_owner_uid = null; // If present, we're in a house lobby
 let game_state = 'lobby';
 
 // Gamemode dependent variables
@@ -149,6 +150,70 @@ async function start() {
     });
     portals.push(freedraw_portal, quickdraw_portal, guessinggame_portal);
 
+    // If user is signed in, show a Home (House) portal to their own lobby
+    if (isAuthConfigured()) {
+        const user = getUser();
+        if (user && user.id) {
+                let redirecting = false;
+                const homePortal = new Portal(
+                    width / 2 + 400, 
+                    height / 2 + 150, 
+                    150, 
+                    you.ui_color, 
+                    "Stand here to go to\nYour House", 
+                    () => {
+                        if (redirecting) return;
+                        redirecting = true;
+                        const slug = (user.id || '').toLowerCase().replaceAll('-', '').slice(0, 12);
+                        const url = `${window.location.origin}${window.location.pathname.replace(/\/[^/]*$/, '')}/house?u=${encodeURIComponent(slug)}`;
+                        window.location.assign(url);
+                    },
+                    { oneshot: true }
+                );
+            portals.push(homePortal);
+        }
+    }
+
+    // If URL indicates a house lobby, auto-join and mount controls
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (window.location.pathname.endsWith('/house') && urlParams.get('u')) {
+            house_owner_uid = urlParams.get('u'); // now a short slug
+            let me = '';
+            try { await authReady(); me = getUser()?.id || ''; } catch {}
+            connect('house', { u: house_owner_uid, me });
+            joined = true;
+            lobby_type = 'freedraw'; // server will send house_mode to refine
+            // Mount host controls and set visibility based on ownership
+            await authReady();
+            mountHouseControls();
+            const user = getUser();
+            const isOwner = Boolean(user && (user.id || '').toLowerCase().replaceAll('-', '').slice(0,12) === house_owner_uid);
+            updateHouseControlsVisibility(isOwner);
+            // If server hasn't sent the mode yet, default to freedraw title/buttons
+            setHouseMode('freedraw');
+            // Update visibility on auth changes
+            window.addEventListener('auth:user-changed', (evt) => {
+                const u = evt.detail?.user || null;
+                const isOwnerNow = Boolean(u && (u.id || '').toLowerCase().replaceAll('-', '').slice(0,12) === house_owner_uid);
+                updateHouseControlsVisibility(isOwnerNow);
+            });
+            // Handle mode selection callbacks
+            onHouseModeSelected((mode) => {
+                const u = getUser();
+                const requesterUid = u?.id || '';
+                if (!requesterUid || requesterUid !== house_owner_uid) return;
+                sendMessage({ type: 'house_switch_mode', mode, requesterUid });
+            });
+        } else {
+            // Not in house path: ensure controls unmounted/hidden
+            mountHouseControls();
+            updateHouseControlsVisibility(false);
+        }
+    } catch (e) {
+        console.warn('House autoconnect skipped:', e?.message || e);
+    }
+
     return;
 }
 
@@ -211,12 +276,10 @@ window.setup = async() => {
 window.windowResized = () => { 
     resizeCanvas(windowWidth, windowHeight);
     // Move portals to new positions based on the new window size
-    portals[0].x = width / 2;
-    portals[0].y = height / 2 - 200;
-    portals[1].x = width / 2 + 400;
-    portals[1].y = height / 2 - 200;
-    portals[2].x = width / 2 - 400;
-    portals[2].y = height / 2 - 200;
+    if (portals[0]) { portals[0].x = width / 2; portals[0].y = height / 2 - 200; }
+    if (portals[1]) { portals[1].x = width / 2 + 400; portals[1].y = height / 2 - 200; }
+    if (portals[2]) { portals[2].x = width / 2 - 400; portals[2].y = height / 2 - 200; }
+    if (portals[3]) { portals[3].x = width / 2 + 400; portals[3].y = height / 2 + 150; }
     // no-op with HTML chat; kept for compatibility
 }
 
@@ -470,6 +533,46 @@ function onmessage(event) {
     }
 
     switch (data.type) {
+        case 'house_unavailable':
+            // Redirect back to homepage if the requested house is unavailable
+            try {
+                const base = new URL(window.location.href);
+                // Go to the app root (index.html) by stripping path after last slash
+                const home = `${base.origin}${base.pathname.replace(/\/(house|login)(?:\.html)?$/i, '/')}`;
+                window.location.replace(home);
+            } catch {
+                window.location.replace('/');
+            }
+            return;
+        case 'house_mode':
+            // Server announcing mode change for house
+            if (typeof data.mode === 'string') {
+                const prev = lobby_type;
+                lobby_type = data.mode;
+                try { setHouseMode(lobby_type); } catch {}
+                // Reset local state when switching between fundamentally different modes
+                if (lobby_type === 'freedraw') {
+                    game_state = 'lobby';
+                    prompt = '';
+                    results = [];
+                    current_artist = -1;
+                } else if (lobby_type === 'quickdraw') {
+                    game_state = 'waiting';
+                    prompt = '';
+                    results = [];
+                    current_artist = -1;
+                } else if (lobby_type === 'guessinggame') {
+                    game_state = 'waiting';
+                    prompt = '';
+                    results = [];
+                    current_artist = -1;
+                }
+                // If mode changed, consider clearing drawings when leaving drawing/voting phases
+                if (prev !== lobby_type) {
+                    for (let g of goblins) g.lines = g.lines || [];
+                }
+            }
+            return; // consume
         case "chat":
             // Handle chat messages
             if (data.userId) {
@@ -578,13 +681,10 @@ function onmessage(event) {
             }
             else if (lobby_type === 'guessinggame') {
                 if (data.state === 'waiting') {
+                    // Entering scoreboard/waiting: clear all drawings so text isn't overlapped
+                    for (let g of goblins) { g.lines = []; }
                     timer = data.time;
                 } else if (data.state === 'drawing') {
-                    if (game_state === 'waiting' && last_winner !== -1) {
-                        for (let goblin of goblins) {
-                            goblin.lines = []; // Clear lines for all goblins
-                        }
-                    }
                     current_artist = data.artistId;
                     // if you are the artist, you received the prompt
                     if (you.id === current_artist) {

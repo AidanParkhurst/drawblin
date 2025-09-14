@@ -2,7 +2,7 @@ import { you } from './index.js';
 import { connect } from './network.js';
 
 class Portal {
-    constructor(x, y, radius, color, text="", teleportFunction = null) {
+    constructor(x, y, radius, color, text="", teleportFunction = null, options = {}) {
         this.x = x; // X position of the portal
         this.y = y; // Y position of the portal
         this.radius = radius; // Radius of the portal
@@ -12,9 +12,13 @@ class Portal {
         this.touch_duration = 2000; // Duration in milliseconds to trigger portal action
         this.teleport_function = teleportFunction; // Function to call when the portal is activated
         this.time_since_first_update = 0;
+        // Behavior flags
+        this.oneshot = !!options.oneshot; // if true, deactivate after first trigger
+        this.active = true; // when false, collision and rendering stop
     }
 
     update(delta) {
+        if (!this.active) return; // Do nothing if deactivated
         this.time_since_first_update += delta; // Increment time since last update
         this.checkCollision(delta); // Check if the goblin is touching the portal
         this.display(); // Draw the portal
@@ -22,12 +26,19 @@ class Portal {
     }
 
     checkCollision(delta) {
+        if (!this.active) return;
         // Check if the goblin is touching the portal
         if (you && dist(you.x, you.y, this.x, this.y) < this.radius) {
             this.touch_timer += delta; // Increment touch timer
             if (this.touch_timer >= this.touch_duration) {
                 if (this.teleport_function) {
-                    this.teleport_function(); // Call the teleport function if defined and duration met
+                    const fn = this.teleport_function; // local copy in case we null it
+                    // If oneshot, immediately deactivate and prevent further triggers
+                    if (this.oneshot) {
+                        this.active = false;
+                        this.teleport_function = null;
+                    }
+                    fn(); // Call the teleport function if defined and duration met
                 }
                 this.touch_timer = 0; // Reset timer after action
             }
@@ -37,6 +48,7 @@ class Portal {
     }
 
     display() {
+        if (!this.active) return;
         // Spinnning dotted line circle
         push();
         translate(this.x, this.y);

@@ -124,6 +124,7 @@ body {
 
     font-family: 'Neucha';
 }
+#chat { right: auto; }
 
 #chat:hover {
     border-color: var(--chat-border-hover, rgba(30,30,30,0.2));
@@ -163,6 +164,70 @@ body {
 
 #chat .chat__input::placeholder {
     color: rgba(30,30,30,0.4);
+}
+
+/* House controls panel (top-left, collapsible) */
+#house-controls {
+    position: fixed;
+    left: 12px;
+    top: 12px;
+    width: 180px;
+    border: 3px dashed rgba(30,30,30,0.08);
+    border-radius: 10px;
+    padding: 10px 10px 12px 10px;
+    display: none; /* toggled via JS */
+    z-index: 900;
+    font-family: 'Neucha';
+    color: rgba(30,30,30,0.6);
+}
+
+#house-controls .house-controls__title { margin-bottom: 8px; font-size: 18px; }
+#house-controls .house-controls__buttons { display: flex; flex-direction: column; gap: 8px; }
+
+#house-controls .house-controls__btn {
+    display: block;
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 18px;
+    background: rgba(255,255,255,0);
+    border: 3px dashed rgba(30,30,30,0.08);
+    border-radius: 10px;
+    cursor: pointer;
+    font-family: 'Neucha';
+    color: rgba(30,30,30,0.5);
+    transition: 0.2s all;
+}
+
+#house-controls .house-controls__btn:hover {
+    background: rgba(255,255,255,0.1);
+    border-color: rgba(30,30,30,0.2);
+}
+
+/* House toggle button (like chat) */
+#house-controls .house-controls__toggle {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    padding: 0 6px;
+    height: 24px;
+    border: 3px dashed rgba(30,30,30,0.08);
+    border-radius: 10px;
+    background: rgba(255,255,255,0);
+    color: rgba(30,30,30,0.8);
+    font-family: 'Neucha';
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    z-index: 1;
+}
+
+/* Collapsed state */
+#house-controls.house-controls--collapsed {
+    /* Keep padding consistent so the title doesn't shift when collapsing */
+    padding: 10px 10px 0px 10px;
+}
+#house-controls.house-controls--collapsed .house-controls__buttons {
+    display: none;
 }
 
 /* Toggle button styling */

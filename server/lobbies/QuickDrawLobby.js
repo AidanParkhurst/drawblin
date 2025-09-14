@@ -13,20 +13,22 @@ class QuickDrawLobby extends Lobby {
         super(id, 6); // Quick draw works well with 4-6 players for voting
         this.minPlayers = 2; // Minimum players to start the game
         this.gameState = "waiting"; // waiting, drawing, pre-voting, voting, finished
-    this.currentArtist = null; // id of artist being voted on 
+        this.currentArtist = null; // id of artist being voted on 
         // TODO: Import a lot of these consts from a rules file, accessible by the frontend as well
         this.waitingTime = 20; // seconds to wait for players
-        this.drawingTime = 80; // seconds (extended)
+        this.drawingTime = 70; // seconds (extended)
         this.preVotingTime = 5; // seconds before voting starts
         this.votingTime = 15;
-        this.celebrationTime = 10; // seconds to show off the winner
+        this.celebrationTime = 20; // seconds to show off the winner
         this.gameTimer = null;
         this.header = ""; // Header for the game state
-    this.timer = this.waitingTime; // Start counting down from waiting time (will shrink as players join)
+        this.timer = this.waitingTime; // Start counting down from waiting time (will shrink as players join)
         this.tickrate = 100;
         this.prompt = ""; // what to draw
         this.finishedDrawings = new Map(); // goblin id -> votes: [{ userId, vote }]
         this.sortedResults = []; // Store results for the finished state 
+        this.recentPrompts = []; // keep last few prompts to avoid repeats
+        this.recentLimit = 10; // shortlist size
 
         // Handle disconnects
         this.onClientRemoved = (socket) => {
@@ -55,7 +57,7 @@ class QuickDrawLobby extends Lobby {
 
     addClient(socket) {
         super.addClient(socket);
-        if (this.gameState === 'waiting') {
+    if (this.gameState === 'waiting') {
             const target = this.desiredWaitForPlayers();
             if (this.timer > target) this.timer = target; // shrink but never extend
         }
@@ -64,11 +66,10 @@ class QuickDrawLobby extends Lobby {
     tick() {
     if (!this.clients || this.clients.size === 0) return;
         this.timer -= this.tickrate / 1000; // Convert ms to seconds and countdown
-        if (this.gameState === 'waiting') {
+    if (this.gameState === 'waiting') {
             // Start the game when we have enough players or after waiting time
             if (this.clients.size == this.maxPlayers || (this.clients.size >= this.minPlayers && this.timer <= 0)) {
-                const pool = prompts.quickdrawConcepts && prompts.quickdrawConcepts.length ? prompts.quickdrawConcepts : ['nature','adventure','storm'];
-                this.prompt = pool[Math.floor(Math.random() * pool.length)];
+                this.prompt = this.pickNewPrompt();
                 this.gameState = 'drawing';
                 this.timer = this.drawingTime; // Set timer to drawing time
                 this.broadcast({ type: "game_state", state: "drawing", prompt: this.prompt, time: this.drawingTime });
@@ -120,9 +121,14 @@ class QuickDrawLobby extends Lobby {
             }
         } else if (this.gameState === 'finished') {
             if (this.timer <= 0) {
-                // Reset lobby for next game
-                this.resetLobby();
-
+                // Immediately kick off the next round without a separate waiting period
+                // Only require waiting when there was no prior round (fresh lobby)
+                if (this.clients.size >= this.minPlayers) {
+                    this.startNextRound();
+                } else {
+                    // Not enough players anymore; fall back to waiting
+                    this.resetLobby();
+                }
             }
         }
     }
@@ -195,6 +201,33 @@ class QuickDrawLobby extends Lobby {
         this.sortedResults = [];
         this.broadcast({ type: "game_state", state: "waiting", time: this.timer });
         console.log(`Quick draw lobby ${this.id} has been reset for a new game.`);
+    }
+
+    startNextRound() {
+        // Prepare for next drawing phase directly
+        this.currentArtist = null;
+        this.prompt = "";
+        this.finishedDrawings.clear();
+        this.sortedResults = [];
+    this.prompt = this.pickNewPrompt();
+        this.gameState = 'drawing';
+        this.timer = this.drawingTime;
+        this.broadcast({ type: 'game_state', state: 'drawing', prompt: this.prompt, time: this.drawingTime });
+        console.log(`Quick draw lobby ${this.id} starting next round with prompt: ${this.prompt}`);
+    }
+
+    pickNewPrompt() {
+        const pool = prompts.quickdrawConcepts && prompts.quickdrawConcepts.length ? prompts.quickdrawConcepts : ['nature','adventure','storm'];
+        if (!pool.length) return 'draw';
+        // Try to pick a prompt not in recentPrompts; if pool too small, allow repeats
+        const recentSet = new Set(this.recentPrompts);
+        let candidates = pool.filter(p => !recentSet.has(p));
+        if (candidates.length === 0) candidates = pool.slice();
+        const choice = candidates[Math.floor(Math.random() * candidates.length)];
+        // update recent queue
+        this.recentPrompts.push(choice);
+        if (this.recentPrompts.length > this.recentLimit) this.recentPrompts.shift();
+        return choice;
     }
 
     stopGameLoop() {

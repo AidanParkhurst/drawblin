@@ -5,20 +5,29 @@ const BASE_URL = "https://backend-wmm9.onrender.com"; // Production URL
 
 let ws = null;
 
-function connect(gameType = 'freedraw') {
+function connect(gameType = 'freedraw', query = null) {
     // Close existing connection if any
     if (ws && ws.readyState !== WebSocket.CLOSED) {
         ws.close();
     }
 
     // Validate game type and construct endpoint
-    const validGameTypes = ['freedraw', 'quickdraw', 'guessinggame'];
+    const validGameTypes = ['freedraw', 'quickdraw', 'guessinggame', 'house'];
     if (!validGameTypes.includes(gameType)) {
         console.error(`Invalid game type: ${gameType}. Valid types are: ${validGameTypes.join(', ')}`);
         gameType = 'freedraw'; // Default fallback
     }
 
-    const endpoint = `${BASE_URL}/${gameType}`;
+    // Build optional query string
+    let qs = '';
+    if (query && typeof query === 'object') {
+        const parts = Object.entries(query)
+            .filter(([k, v]) => v !== undefined && v !== null && v !== '')
+            .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
+        if (parts.length) qs = `?${parts.join('&')}`;
+    }
+
+    const endpoint = `${BASE_URL}/${gameType}${qs}`;
     console.log(`Connecting to ${gameType} lobby at ${endpoint}`);
     
     ws = new WebSocket(endpoint);
