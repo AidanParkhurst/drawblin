@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login — Drawblins</title>
+    <script type="module" crossorigin src="./assets/login-D-JTBGc3.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/auth-BAhrf9PK.js">
+    <link rel="stylesheet" crossorigin href="./assets/auth-G-z7ZtgZ.css">
+    <link rel="stylesheet" crossorigin href="./assets/login-zKUDG8tq.css">
+  </head>
+  <body class="login-body">
+    <div class="login-card">
+      <h1 class="login-title">Log In</h1>
+      <h3 class="login-subtitle">An account lets you host private games, customize your goblin, and more!</h3>
+      <button id="google" class="btn btn-outline btn-block">Sign in with Google</button>
+
+      <div class="login-separator">
+        <hr /><span>or</span><hr />
+      </div>
+
+      <form id="email-form" class="login-form">
+        <label>Email</label>
+        <input id="email" class="input" type="email" required />
+        <label>Password</label>
+        <input id="password" class="input" type="password" required />
+        <div class="actions">
+          <button id="signin" class="btn btn-primary" type="submit">Sign in</button>
+          <button id="signup" class="btn btn-outline" type="button">Sign up</button>
+        </div>
+      </form>
+
+      <p id="status" class="status"></p>
+
+    </div>
+    
+    <div class="back-link">
+      <a href="./index.html"> &lt;- Back to game</a>
+    </div>
+
+  </body>
+  </html>
