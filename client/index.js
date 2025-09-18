@@ -182,9 +182,12 @@ async function start() {
             // Handle mode selection callbacks
             onHouseModeSelected((mode) => {
                 const u = getUser();
-                const requesterUid = u?.id || '';
-                if (!requesterUid || requesterUid !== house_owner_uid) return;
-                sendMessage({ type: 'house_switch_mode', mode, requesterUid });
+                const fullId = u?.id || '';
+                if (!fullId) return;
+                const shortId = fullId.toLowerCase().replaceAll('-', '').slice(0,12);
+                // Only allow if this client is the owner
+                if (shortId !== house_owner_uid) return;
+                sendMessage({ type: 'house_switch_mode', mode, requesterUid: fullId });
             });
         } else {
             // Not in house path: ensure controls unmounted/hidden

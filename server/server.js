@@ -216,10 +216,11 @@ wss.on('connection', (socket, request) => {
             const target = (message.mode || '').toString().toLowerCase();
             const allowed = ['freedraw', 'quickdraw', 'guessinggame'];
             if (!allowed.includes(target)) return;
-                const ownerSlug = lobbyIdToHouseOwner.get(currentLobby.id);
-                if (!ownerSlug) return; // not a house lobby
-                const requesterUid = (message.requesterUid || '').toString();
-                if (!requesterUid || shortUid(requesterUid) !== ownerSlug) {
+            const ownerSlug = lobbyIdToHouseOwner.get(currentLobby.id);
+            if (!ownerSlug) return; // not a house lobby
+            const requesterUid = (message.requesterUid || '').toString();
+            const requesterShort = shortUid(requesterUid);
+            if (!requesterShort || requesterShort !== ownerSlug) {
                 console.warn(`Rejected house_switch_mode by non-owner in lobby ${currentLobby.id}`);
                 return;
             }

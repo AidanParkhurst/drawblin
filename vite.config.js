@@ -15,6 +15,8 @@ export default defineConfig({
     // For custom domain (drawbl.in) we serve from root '/' in production.
     // During local dev we keep relative './' so opening via file/ or dev server is fine.
     base: process.env.NODE_ENV === 'production' ? '/' : './',
+    // Static assets (including CNAME) copied as-is
+    publicDir: path.resolve(rootDir, 'public'),
     build: {
         outDir: path.resolve(rootDir, '../dist'),
         emptyOutDir: true,
