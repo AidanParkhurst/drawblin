@@ -12,7 +12,9 @@ export default defineConfig({
     root: rootDir,
     // Load env files from the repo root (where .env.local currently lives)
     envDir: "..",
-    base: process.env.NODE_ENV === 'production' ? '/drawblin/' : './',
+    // For custom domain (drawbl.in) we serve from root '/' in production.
+    // During local dev we keep relative './' so opening via file/ or dev server is fine.
+    base: process.env.NODE_ENV === 'production' ? '/' : './',
     build: {
         outDir: path.resolve(rootDir, '../dist'),
         emptyOutDir: true,
