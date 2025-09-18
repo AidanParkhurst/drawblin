@@ -20,6 +20,7 @@ export default defineConfig({
             input: {
                 main: path.resolve(rootDir, 'index.html'),
                 login: path.resolve(rootDir, 'login.html'),
+                house: path.resolve(rootDir, 'house.html'),
             }
         }
     },

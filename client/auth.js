@@ -178,7 +178,7 @@ async function bindLoginButton() {
       btn.onclick = (e) => { e.preventDefault(); openMenu(); };
     } else {
       closeMenu();
-      btn.setAttribute('href', '/login');
+      btn.setAttribute('href', './login');
       btn.onclick = null;
     }
     // Optional tooltip

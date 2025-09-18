@@ -54,7 +54,7 @@
       document.getElementById('google').addEventListener('click', async () => {
         try {
           setStatus('Redirecting to Google...');
-          const redirectTo = new URL('./login.html', window.location.href).toString();
+          const redirectTo = new URL('./login', window.location.href).toString();
           await auth.signInWithGoogle(redirectTo);
         } catch (e) {
           setStatus(e.message || 'Google sign-in failed');

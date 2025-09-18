@@ -44,6 +44,8 @@ let heartbeat = 150;
 let heartbeat_timer = 0;
 let portals = [];
 let joined = false; // Track if the user has joined a game
+// Dedicated reference for the signed-in user's Home portal (house lobby)
+let homePortal = null;
 
 
 let hasInput = false;
@@ -150,34 +152,13 @@ async function start() {
     });
     portals.push(freedraw_portal, quickdraw_portal, guessinggame_portal);
 
-    // If user is signed in, show a Home (House) portal to their own lobby
-    if (isAuthConfigured()) {
-        const user = getUser();
-        if (user && user.id) {
-                let redirecting = false;
-                const homePortal = new Portal(
-                    width / 2 + 400, 
-                    height / 2 + 150, 
-                    150, 
-                    you.ui_color, 
-                    "Stand here to go to\nYour House", 
-                    () => {
-                        if (redirecting) return;
-                        redirecting = true;
-                        const slug = (user.id || '').toLowerCase().replaceAll('-', '').slice(0, 12);
-                        const url = `${window.location.origin}${window.location.pathname.replace(/\/[^/]*$/, '')}/house?u=${encodeURIComponent(slug)}`;
-                        window.location.assign(url);
-                    },
-                    { oneshot: true }
-                );
-            portals.push(homePortal);
-        }
-    }
+    ensureHomePortal();
 
-    // If URL indicates a house lobby, auto-join and mount controls
+    // If URL indicates a house lobby (supports /house and /house.html for static hosting), auto-join and mount controls
     try {
         const urlParams = new URLSearchParams(window.location.search);
-        if (window.location.pathname.endsWith('/house') && urlParams.get('u')) {
+        const housePath = /\/house(?:\.html)?$/i.test(window.location.pathname);
+        if (housePath && urlParams.get('u')) {
             house_owner_uid = urlParams.get('u'); // now a short slug
             let me = '';
             try { await authReady(); me = getUser()?.id || ''; } catch {}
@@ -217,6 +198,47 @@ async function start() {
     return;
 }
 
+// Creates or removes the home portal based on current auth user state.
+function ensureHomePortal() {
+    const user = isAuthConfigured() ? getUser() : null;
+    const hasUser = Boolean(user && user.id);
+    const inHouse = /\/house(?:\.html)?$/i.test(window.location.pathname);
+
+    // Remove if shouldn't exist
+    if ((!hasUser || inHouse) && homePortal) {
+        const idx = portals.indexOf(homePortal);
+        if (idx !== -1) portals.splice(idx, 1);
+        homePortal = null;
+    }
+
+    // Create if needed
+    if (hasUser && !homePortal && !inHouse) {
+        let redirecting = false;
+        const slug = (user.id || '').toLowerCase().replaceAll('-', '').slice(0, 12);
+        homePortal = new Portal(
+            width / 2 + 400,
+            height / 2 + 150,
+            150,
+            you?.ui_color || [0,0,0],
+            "Stand here to go to\nYour House",
+            () => {
+                if (redirecting) return;
+                redirecting = true;
+                const basePath = window.location.pathname.replace(/\/[^/]*$/, '/');
+                // Use clean URL /house?u=... (server or static host should serve house.html for /house request)
+                const url = `${window.location.origin}${basePath}house?u=${encodeURIComponent(slug)}`;
+                window.location.assign(url);
+            },
+            { oneshot: true }
+        );
+        portals.push(homePortal);
+    }
+
+    if (homePortal && you && Array.isArray(you.ui_color)) {
+        homePortal.color = [...you.ui_color];
+    }
+}
+
 
 // -- P5 Initialization --
 
@@ -253,6 +275,8 @@ window.setup = async() => {
             you.name = name;
             sendMessage({ type: 'update', goblin: you });
         }
+        // Auth changed could add/remove home portal
+        ensureHomePortal();
     });
 
     // React to profile display-name saves from the account menu
@@ -271,15 +295,17 @@ window.setup = async() => {
         for (const p of portals) {
             if (p && Array.isArray(p.color)) p.color = [...you.ui_color];
         }
+        if (homePortal && Array.isArray(you.ui_color)) homePortal.color = [...you.ui_color];
     });
 }
 window.windowResized = () => { 
     resizeCanvas(windowWidth, windowHeight);
     // Move portals to new positions based on the new window size
+    // The first three portals are game-mode portals (creation order stable)
     if (portals[0]) { portals[0].x = width / 2; portals[0].y = height / 2 - 200; }
     if (portals[1]) { portals[1].x = width / 2 + 400; portals[1].y = height / 2 - 200; }
     if (portals[2]) { portals[2].x = width / 2 - 400; portals[2].y = height / 2 - 200; }
-    if (portals[3]) { portals[3].x = width / 2 + 400; portals[3].y = height / 2 + 150; }
+    if (homePortal) { homePortal.x = width / 2 + 400; homePortal.y = height / 2 + 150; }
     // no-op with HTML chat; kept for compatibility
 }
 
