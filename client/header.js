@@ -1,8 +1,14 @@
 // Header / prompt / scoreboard utilities
 // Provides: drawColoredPrompt(prompt, seconds, uiColorOverride?) and drawScoreboard(results, goblins, ui_color)
 // Also: drawHeader(text, ui_color) for generic headers and drawWaitingWithScoreboard
+import { spawnBurst } from './burst.js';
 
-export function drawHeader(maskedPrompt, seconds, uiColor) {
+// Track which revealed tokens we've already celebrated to avoid duplicate bursts
+// Key format: `${text}|${occurrenceIndex}` (occurrence is Nth time this text appears)
+const revealedSeen = new Set();
+
+export function drawHeader(maskedPrompt, seconds, uiColor, options = {}) {
+    const revealBursts = Boolean(options.revealBursts);
     if (!uiColor) uiColor = [0,0,0];
     // Tokenize bracketed reveals: [word]
     const raw = maskedPrompt.split(/(\[[^\]]+\])/).filter(s=> s.length);
@@ -43,18 +49,45 @@ export function drawHeader(maskedPrompt, seconds, uiColor) {
     const phraseWidth = compact.reduce((w,t)=> w+measure(t.text),0);
     const timerWidth = showTimer ? textWidth(timerStr) : 0;
     let x = width/2 - (phraseWidth + timerWidth)/2;
+    // Track per-render occurrence count for revealed texts to build stable keys
+    const perRenderCounts = new Map();
+    let anyReveals = false;
     for (const t of compact){
         const colored = t.revealed;
         fill(colored?uiColor[0]:30, colored?uiColor[1]:30, colored?uiColor[2]:30, colored?255:204);
+        const tokenStartX = x;
+        const tokenWidth = measure(t.text);
+
+        // Draw the token char-by-char to keep spacing consistent with measure()
         let run='';
         for (const c of t.text){
             if (c===' '){ if(run){ text(run,x,y); x+=textWidth(run); run=''; } x+=spaceW; }
             else run+=c;
         }
         if (run){ text(run,x,y); x+=textWidth(run); }
+
+        // Trigger burst the first time a revealed token appears (guessing game)
+        if (revealBursts && t.revealed && tokenWidth > 0){
+            anyReveals = true;
+            const prev = perRenderCounts.get(t.text) || 0;
+            const occ = prev; // zero-based occurrence index for this text in this render
+            perRenderCounts.set(t.text, prev + 1);
+            const key = `${t.text}|${occ}`;
+            if (!revealedSeen.has(key)){
+                const cx = tokenStartX + tokenWidth/2;
+                const cy = y; // baseline; visually centered enough for a small pop
+                spawnBurst(cx, cy, uiColor, { count: 7 });
+                revealedSeen.add(key);
+            }
+        }
     }
     if (showTimer){ fill(uiColor[0],uiColor[1],uiColor[2],200); text(timerStr,x,y); }
     pop();
+
+    // If there are no revealed segments in this prompt, reset the seen cache so the next round can pop again
+    if (revealBursts && !anyReveals) {
+        revealedSeen.clear();
+    }
 }
 
 export function drawScoreboard(results, goblins, ui_color){

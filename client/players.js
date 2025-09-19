@@ -1,6 +1,7 @@
 import { you, goblins } from './index.js';
 import { assets } from './assets.js'; // Import assets for the player list
 import ProfileDisplay from './profile_display.js';
+import { spawnBurst } from './burst.js';
 
 class PlayerList {
     constructor(circleSize = 50, spacing = 20) {
@@ -106,6 +107,21 @@ class PlayerList {
     addPointBurst(userId, points) {
         if (points === 0) return;
         this.pointBursts.push({ userId, points, age: 0, duration: 1200 }); // duration ms
+
+        // Also spawn a quick particle burst where the number appears
+        try {
+            // Compute the same position as in display(): find index and coordinates
+            const circleSize = this.circleSize; // base size used there
+            const totalWidth = (goblins.length * circleSize) + ((goblins.length - 1) * this.spacing);
+            const startX = (windowWidth - totalWidth) / 2; // Center horizontally
+            const y = windowHeight - 20 - (circleSize / 2); // circle center Y
+            const idx = goblins.findIndex(g=> g.id === userId);
+            if (idx !== -1) {
+                const x = startX + (idx * (circleSize + this.spacing));
+                const baseY = y - circleSize * 0.9; // matches display()
+                spawnBurst(x, baseY, goblins[idx].ui_color || goblins[idx].color || [0,0,0], { count: 8 });
+            }
+        } catch {}
     }
 
     updatePointBursts() {

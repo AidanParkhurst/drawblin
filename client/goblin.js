@@ -48,6 +48,21 @@ class Goblin {
 
     // Tool options
     this.eraserRadius = 15; // default eraser radius in pixels
+
+    // Appear/spawn animation state
+    this._spawnActive = false;      // currently animating
+    this._spawnTime = 0;            // ms since start
+    this._spawnDuration = 330;      // quick pop under half a second
+    this._popStarted = false;       // has an appear animation started at least
+    this._popCompleted = false;     // finished appear animation
+    }
+
+    // Public: trigger a quick pop-in animation now
+    triggerAppear() {
+        this._spawnActive = true;
+        this._spawnTime = 0;
+        this._popStarted = true;
+        this._popCompleted = false;
     }
 
     setSize() {
@@ -82,6 +97,9 @@ class Goblin {
 
     // Called every frame
     update(delta, draw_lines = true, draw_name = false) {
+        // First-time auto trigger if never started
+        if (!this._popStarted) this.triggerAppear();
+
         if (this.simplify_timer >= this.simplify_interval && this.lines.length !== this.last_simplify_count) {
             this.simplify_timer = 0; 
             this.lines = this.simplifyLines(this.lines, 5, 0.5);
@@ -130,6 +148,18 @@ class Goblin {
                 this.speech_timer = 0; // Reset timer
             }
         }
+
+        // Advance spawn animation and bookkeep last render frame
+        if (this._spawnActive) {
+            const step = Math.min(delta, 50); // cap per-frame advance so animation can't be skipped
+            this._spawnTime += step;
+            if (this._spawnTime >= this._spawnDuration) {
+                this._spawnActive = false;
+                this._spawnTime = this._spawnDuration;
+                this._popCompleted = true;
+            }
+        }
+        // keep flags consistent
     }
     
     display(draw_name) {
@@ -157,7 +187,29 @@ class Goblin {
         noStroke();
 
         translate(this.x, this.y);
-        // Empty hand just static next to goblin's back
+        // Compute pop-in scale once
+        let spawnScale = 1;
+        if (this._popStarted) {
+            const t = Math.min(Math.max(this._spawnTime / this._spawnDuration, 0), 1); // 0..1
+            const startScale = 0.05;   // start very small
+            const overshoot = 1.15;    // subtle overshoot
+            const split = 0.75;        // reach overshoot later in the timeline
+            if (t <= split) {
+                // ease-out from startScale to overshoot
+                const u = t / split;
+                const eased = 1 - Math.pow(1 - u, 2); // quadratic ease-out
+                spawnScale = startScale + (overshoot - startScale) * eased;
+            } else {
+                // ease-in from overshoot down to 1.0 quickly
+                const u = (t - split) / (1 - split);
+                const easedIn = u * u; // quadratic ease-in
+                spawnScale = overshoot + (1.0 - overshoot) * easedIn;
+            }
+        }
+
+        // Draw hands and tools with pop scale
+        push();
+        scale(spawnScale);
         let empty_hand_x = this.flip ? 30 : -30;
         image(assets.sprites["empty_hand"], empty_hand_x, 10, 10, 10);
         let brush_vector = createVector(this.cursor.x - this.x, this.cursor.y - this.y);
@@ -171,13 +223,12 @@ class Goblin {
         } else if (this.tool === 'eraser') {
             image(assets.sprites["eraser"], 15, -8, 25, 15);
         }
-
-
+        pop();
         pop();
 
         let height = this.size * (assets.sprites[this.shape].height / assets.sprites[this.shape].width);
 
-        // Draw name (adjust vertical offset if crown showing)
+        // Draw name (adjust vertical offset if crown showing), not scaled
         if (draw_name && this.name) {
             push();
             noStroke();
@@ -189,6 +240,9 @@ class Goblin {
             pop();
         }
 
+        // Draw body with pop scale
+        push();
+        scale(spawnScale);
         translate(0, bounceOffset); // Apply bounce offset
         
         // Apply tilt rotation
@@ -199,13 +253,14 @@ class Goblin {
         }
         image(assets.sprites[this.shape], 0, 0, this.size, height);
         if (this.hasCrown) this.display_crown();
+        pop();
 
         // OG: just a circle
         // fill(this.color);
         // noStroke();
         // ellipse(this.x, this.y, this.size);
 
-        pop();
+    pop();
     }
 
     display_speech() {

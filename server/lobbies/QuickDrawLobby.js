@@ -7,6 +7,8 @@ class QuickDrawLobby extends Lobby {
     // After drawing time, switch to voting phase
     // One at a time, each artist's drawing is displayed to all players
     // And players rank each one
+    // Note: Chat is allowed in all phases. Only during 'voting' do numeric messages (1-5)
+    // get interpreted as votes; otherwise they're broadcast as normal chat.
     // After all drawings are displayed, show results and scores
 
     constructor(id) {
@@ -143,6 +145,8 @@ class QuickDrawLobby extends Lobby {
 
         } else if (message.type === "chat") {
             // Handle chat
+            // Always allow chat during drawing (and other non-voting phases).
+            // Only interpret numeric messages as votes during the voting phase.
             if (this.users.has(socket)) {
                 const user = this.users.get(socket);
                 message.userId = user.id;
@@ -177,6 +181,10 @@ class QuickDrawLobby extends Lobby {
                     current_art.votes.push({ userId: message.userId, vote: vote });
                 }
                 this.broadcast({ type: "chat", userId: message.userId, content: "Voted!" });
+            } else {
+                // Not voting: treat all chat as normal chat and broadcast to everyone
+                this.broadcast(message, null);
+                console.log(`Quick draw lobby ${this.id} chat from ${message.userId}: ${message.content}`);
             }
         }
     }

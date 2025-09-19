@@ -13,6 +13,7 @@ import { assets } from "./assets.js";
 import { calculateUIColor, randomPaletteColor } from "./colors.js";
 import { ready as authReady, isAuthConfigured, getUser, getProfileName, upsertProfileName } from './auth.js';
 import { generateGoblinName } from './names.js';
+import { spawnBurst, updateBursts } from './burst.js';
 
 // -- Game State Initialization --
 let you;
@@ -120,6 +121,7 @@ async function start() {
         random(['manny', 'stanley', 'ricky', 'blimp', 'hippo', 'grubby']),
         name
     ); // Create the local goblin
+    try { you.triggerAppear?.(); } catch {}
 
     // Calculate UI color based on contrast against background (240, 240, 240)
     you.ui_color = calculateUIColor(you.color, [240, 240, 240]);
@@ -333,14 +335,15 @@ window.draw = () => {
         guessinggame_update(deltaTime);
     }
 
+    // Render any active particle bursts above world elements, before UI overlays
+    updateBursts();
+
     // HTML chat doesn't need per-frame drawing, but keep call for compatibility
     chat.update();
     playerList.update();
     toolbelt.update();
 
     if (drawing && mouseIsPressed) {
-        if (dist(you.cursor.x, you.cursor.y, last_mouse.x, last_mouse.y) < line_granularity) return; // Skip if the mouse hasn't moved enough
-        
         if (you.tool === 'eraser') {
             // Eraser logic: remove lines that are within a radius of the eraser path
             const eraserLine = {
@@ -356,6 +359,8 @@ window.draw = () => {
                 if (d <= radius) you.lines.splice(i, 1);
             }
         } else {
+            // For drawing, throttle additions if we haven't moved enough
+            if (dist(you.cursor.x, you.cursor.y, last_mouse.x, last_mouse.y) < line_granularity) return; // Skip if the mouse hasn't moved enough
             // Regular brush/drawing logic
             var l = new Line(createVector(last_mouse.x, last_mouse.y), createVector(you.cursor.x, you.cursor.y), you.color, 5);
             you.lines.push(l); // Store the line in the goblin's lines array
@@ -418,7 +423,7 @@ function quickdraw_update(delta) {
         }
         headerText = last_winner !== -1 ? `Winner: ${winnerName}!` : 'No winner';
     }
-    if (headerText) drawHeader(headerText, int(timer), you.ui_color);
+    if (headerText) drawHeader(headerText, int(timer), you.ui_color, { revealBursts: (lobby_type === 'guessinggame') });
 }
 
 function guessinggame_update(delta) {
@@ -471,7 +476,7 @@ function guessinggame_update(delta) {
         header = "It was a " + prompt;
     }
 
-    if (header) drawHeader(header, int(timer), you.ui_color);
+    if (header) drawHeader(header, int(timer), you.ui_color, { revealBursts: (lobby_type === 'guessinggame') });
 }
 
 function drawTitle() {
@@ -507,6 +512,10 @@ window.mouseReleased = () => {
     if (drawing && you.lines.length === last_line_count && you.tool !== 'eraser') { // If no new line was added and not using eraser
         var l = new Line(createVector(you.cursor.x, you.cursor.y), createVector(you.cursor.x, you.cursor.y), you.color, 5);
         you.lines.push(l); // Store the line in the goblin's lines array
+    }
+    // Sample visual pop on mouse release (quick, small). Easy to remove later.
+    if (drawing && you.tool !== 'eraser') {
+        spawnBurst(you.cursor.x, you.cursor.y, you.color, { count: 6 });
     }
     drawing = false;
     // add a dot line to the goblin's lines
@@ -632,7 +641,9 @@ function onmessage(event) {
             if (!goblin) {
                 // If the goblin doesn't exist, create a new one
                 const color = Array.isArray(data.goblin.color) && data.goblin.color.length===3 ? data.goblin.color : randomPaletteColor();
-                goblins.push(new Goblin(data.goblin.x, data.goblin.y, color, false, data.goblin.id, data.goblin.shape, data.goblin.name || ''));
+                const newcomer = new Goblin(data.goblin.x, data.goblin.y, color, false, data.goblin.id, data.goblin.shape, data.goblin.name || '');
+                try { newcomer.triggerAppear?.(); } catch {}
+                goblins.push(newcomer);
                 return;
             }
             if (goblin) {
@@ -674,6 +685,8 @@ function onmessage(event) {
             break;
 
         case "game_state":
+            // Remember previous state to detect visibility transitions
+            const prev_state = game_state;
             if (lobby_type === 'quickdraw') {
                 if (data.state === 'waiting') {
                     if (game_state === 'finished' && last_winner !== -1) { // game restarted, clear all drawings except for the winner
@@ -737,6 +750,8 @@ function onmessage(event) {
                 }
                 game_state = data.state;
             }
+
+            // Removed blanket pop-in triggers on state change; goblins now pop only on first render
 
             break;
         case 'prompt_update':
