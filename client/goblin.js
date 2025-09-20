@@ -55,6 +55,18 @@ class Goblin {
     this._spawnDuration = 330;      // quick pop under half a second
     this._popStarted = false;       // has an appear animation started at least
     this._popCompleted = false;     // finished appear animation
+
+    // Per-frame render intent flags (set by update(), consumed by renderer)
+    this._visibleThisFrame = false;       // whether to render goblin sprite/UI this frame
+    this._linesVisibleThisFrame = false;  // whether to render lines this frame
+    this._drawNameThisFrame = false;      // whether to draw the name label
+    }
+
+    // Reset per-frame visibility flags; call once at the start of a frame before any updates
+    beginFrame() {
+        this._visibleThisFrame = false;
+        this._linesVisibleThisFrame = false;
+        this._drawNameThisFrame = false;
     }
 
     // Public: trigger a quick pop-in animation now
@@ -95,8 +107,14 @@ class Goblin {
         return color1 === color2;
     }
 
-    // Called every frame
+    // Called every frame (when this goblin should be considered for rendering this frame)
+    // This now only updates state and sets per-frame render flags. Actual drawing is done elsewhere
+    // to ensure all lines render beneath goblins consistently.
     update(delta, draw_lines = true, draw_name = false) {
+        // Mark intended render visibility for this frame
+        this._visibleThisFrame = true;
+        this._linesVisibleThisFrame = !!draw_lines;
+        this._drawNameThisFrame = !!draw_name;
         // First-time auto trigger if never started
         if (!this._popStarted) this.triggerAppear();
 
@@ -104,9 +122,6 @@ class Goblin {
             this.simplify_timer = 0; 
             this.lines = this.simplifyLines(this.lines, 5, 0.5);
             this.last_simplify_count = this.lines.length;
-        }
-        if (draw_lines) {
-            this.display_lines(this.lines);
         }
 
         this.simplify_timer += delta;
@@ -122,8 +137,6 @@ class Goblin {
             this.walk_cycle = 0; // Reset cycle when not moving
         }
 
-        this.display(draw_name);
-
         // TODO: Point the goblin's pen at the cursor instead
         if (this.local){
             this.cursor.x = lerp(this.cursor.x, mouseX, 0.3);
@@ -137,11 +150,8 @@ class Goblin {
             this.cursor.y = this.y + this.cursor_vector.y;
         }
 
-        this.display_range(); 
-        this.display_cursor();
-
+        // Handle speech timer lifecycle (rendering happens in render pass)
         if (this.speech !== "") {
-            this.display_speech();
             this.speech_timer += delta; // Increment speech timer
             if (this.speech_timer >= this.speech_duration) {
                 this.speech = ""; // Clear speech after duration

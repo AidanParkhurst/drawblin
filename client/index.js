@@ -33,6 +33,9 @@ let last_winner = -1; // id of last winner
 let timer = 0;
 let current_artist = -1; // id of the artist who drew the art being voted on
 let results = [];
+// UI overlay queue to ensure overlays render above world
+let _pendingHeader = null; // { text, time, color, options }
+let _pendingScoreboard = null; // { time, results, goblinsRef, color }
 
 // drawing vars
 let drawing = false;
@@ -317,6 +320,8 @@ window.windowResized = () => {
 window.draw = () => {
     background(240);
     cursor(ARROW); // Set default cursor at the beginning of each frame
+    // Reset per-frame render flags for all goblins
+    for (let g of goblins) { if (g && typeof g.beginFrame === 'function') g.beginFrame(); }
     
     if (!hasInput) {
         drawTitle();
@@ -335,8 +340,40 @@ window.draw = () => {
         guessinggame_update(deltaTime);
     }
 
+    // Render pass 1: lines (beneath goblins)
+    for (let g of goblins) {
+        if (g && g._visibleThisFrame && g._linesVisibleThisFrame && typeof g.display_lines === 'function') {
+            g.display_lines(g.lines || []);
+        }
+    }
+
+    // Render pass 2: goblins (sprites and names)
+    for (let g of goblins) {
+        if (g && g._visibleThisFrame && typeof g.display === 'function') {
+            g.display(!!g._drawNameThisFrame);
+        }
+    }
+
+    // Render pass 3: overlays (cursor range, cursor dot, speech), always above goblins
+    for (let g of goblins) {
+        if (!g || !g._visibleThisFrame) continue;
+        if (typeof g.display_range === 'function') g.display_range();
+        if (typeof g.display_cursor === 'function') g.display_cursor();
+        if (g.speech && typeof g.display_speech === 'function') g.display_speech();
+    }
+
     // Render any active particle bursts above world elements, before UI overlays
     updateBursts();
+
+    // Now render queued UI overlays so they appear above gameplay
+    if (_pendingScoreboard) {
+        try { drawWaitingWithScoreboard(_pendingScoreboard.time, _pendingScoreboard.results, _pendingScoreboard.goblinsRef, _pendingScoreboard.color); } catch (e) { console.warn('Scoreboard render failed', e); }
+        _pendingScoreboard = null;
+    }
+    if (_pendingHeader) {
+        try { drawHeader(_pendingHeader.text, _pendingHeader.time, _pendingHeader.color, _pendingHeader.options || {}); } catch (e) { console.warn('Header render failed', e); }
+        _pendingHeader = null;
+    }
 
     // HTML chat doesn't need per-frame drawing, but keep call for compatibility
     chat.update();
@@ -395,19 +432,19 @@ function quickdraw_update(delta) {
     if (game_state === 'waiting') {
         // Clear crowns (winner crown only shown during finished state)
         for (let goblin of goblins) goblin.update(delta, true, true);
-        headerText = `Waiting for players...`;
+    headerText = `Waiting for players...`;
     } else if (game_state === 'drawing') {
         for (let g of goblins) g.hasCrown = false;
         you.update(delta);
-        headerText = `Draw [${prompt}]`;
+    headerText = `Draw [${prompt}]`;
     } else if (game_state === 'pre-voting') {
         for (let goblin of goblins) goblin.update(delta, false);
-        headerText = `Time's up! Get ready to vote.`;
+    headerText = `Time's up! Get ready to vote.`;
     } else if (game_state === 'voting') {
         for (let goblin of goblins) {
             if (goblin.id === current_artist) goblin.update(delta); else goblin.update(delta, false);
         }
-        headerText = `Rate this drawing 1-5`;
+    headerText = `Rate this drawing 1-5`;
     } else if (game_state === 'finished') {
         last_winner = (goblins.find(g => g.id === results[0]?.artistId))?.id || -1;
         let winnerName = '';
@@ -423,7 +460,7 @@ function quickdraw_update(delta) {
         }
         headerText = last_winner !== -1 ? `Winner: ${winnerName}!` : 'No winner';
     }
-    if (headerText) drawHeader(headerText, int(timer), you.ui_color, { revealBursts: (lobby_type === 'guessinggame') });
+    if (headerText) _pendingHeader = { text: headerText, time: int(timer), color: you.ui_color, options: { revealBursts: (lobby_type === 'guessinggame') } };
 }
 
 function guessinggame_update(delta) {
@@ -443,7 +480,7 @@ function guessinggame_update(delta) {
             goblin.update(delta, true, true);
         }
         if (results && results.length) {
-            drawWaitingWithScoreboard(timer, results, goblins, you.ui_color);
+            _pendingScoreboard = { time: timer, results: results.slice(), goblinsRef: goblins, color: you.ui_color };
         } else {
             header = `Waiting for players...`;
         }
@@ -476,7 +513,7 @@ function guessinggame_update(delta) {
         header = "It was a " + prompt;
     }
 
-    if (header) drawHeader(header, int(timer), you.ui_color, { revealBursts: (lobby_type === 'guessinggame') });
+    if (header) _pendingHeader = { text: header, time: int(timer), color: you.ui_color, options: { revealBursts: (lobby_type === 'guessinggame') } };
 }
 
 function drawTitle() {
