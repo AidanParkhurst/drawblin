@@ -1,6 +1,10 @@
 // server/server.js
 import { WebSocketServer } from 'ws';
 import http from 'http';
+import express from 'express';
+import Stripe from 'stripe';
+import { STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, summarizeEnv } from './env.js';
+import { recordCheckoutSessionIdentity, markPaymentIntentSucceeded } from './payments.js';
 import url from 'url';
 import FreeDrawLobby from './lobbies/FreeDrawLobby.js';
 import QuickDrawLobby from './lobbies/QuickDrawLobby.js';
@@ -8,20 +12,76 @@ import GuessingGameLobby from './lobbies/GuessingGameLobby.js';
 
 const PORT = process.env.PORT || 3000; 
 
-// Optional: create an HTTP server (required by some platforms like Railway)
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/html' });
+// Express app for HTTP routes (Stripe webhook + status page)
+const app = express();
+
+// Stripe requires the raw body to validate signatures.
+app.use((req, res, next) => {
+    if (req.originalUrl === '/webhook/stripe') {
+        // Collect raw body manually
+        let data = [];
+        req.on('data', chunk => data.push(chunk));
+        req.on('end', () => {
+            req.rawBody = Buffer.concat(data);
+            next();
+        });
+    } else {
+        express.json()(req, res, next);
+    }
+});
+
+app.get('/', (req, res) => {
+    res.setHeader('Content-Type', 'text/html');
     res.end(`
-        <h1>Drawblin WebSocket Server</h1>
-        <p>Available endpoints:</p>
-        <ul>
-            <li><strong>/freedraw</strong> - Free drawing lobbies</li>
-            <li><strong>/quickdraw</strong> - Quick draw challenge lobbies</li>
-            <li><strong>/guessinggame</strong> - Guessing game lobbies</li>
-            <li><strong>/house?u=OWNER_UID</strong> - Private "House" lobbies owned by a user</li>
-        </ul>
+        <h1>Drawblin Server</h1>
+        <p>WebSocket paths: /freedraw, /quickdraw, /guessinggame, /house?u=OWNER_SLUG</p>
+        <p>Webhook: POST /webhook/stripe</p>
+        <pre>Env: ${JSON.stringify(summarizeEnv(), null, 2)}</pre>
     `);
 });
+
+let stripe = null;
+if (STRIPE_SECRET_KEY) {
+    stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
+} else {
+    console.warn('Stripe secret key missing - payment webhook disabled.');
+}
+
+app.post('/webhook/stripe', async (req, res) => {
+    if (!stripe) {
+        return res.status(500).json({ error: 'Stripe not configured' });
+    }
+    let event;
+    try {
+        const sig = req.headers['stripe-signature'];
+        event = stripe.webhooks.constructEvent(req.rawBody, sig, STRIPE_WEBHOOK_SECRET);
+    } catch (err) {
+        console.error('Stripe signature verification failed:', err?.message || err);
+        return res.status(400).json({ error: `Webhook signature verification failed: ${err.message}` });
+    }
+
+    try {
+        switch (event.type) {
+            case 'checkout.session.completed':
+                await recordCheckoutSessionIdentity(event);
+                console.log(`Stored identity for session ${event.data?.object?.id}`);
+                break;
+            case 'payment_intent.succeeded':
+                await markPaymentIntentSucceeded(event);
+                console.log(`Confirmed payment intent ${event.data?.object?.id}`);
+                break;
+            default:
+                console.log('Unhandled Stripe event type:', event.type);
+        }
+    } catch (e) {
+        console.error('Error processing Stripe event:', e?.message || e);
+        return res.status(500).json({ status: 'error', message: e.message });
+    }
+    res.json({ received: true });
+});
+
+// Create HTTP server from Express (so WebSocket can share the port)
+const server = http.createServer(app);
 
 const wss = new WebSocketServer({ 
     server,

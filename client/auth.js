@@ -196,7 +196,7 @@ async function bindLoginButton() {
       e.preventDefault();
       // Navigate to shop, preserving current directory
       const basePath = window.location.pathname.replace(/\/[^/]*$/, '/');
-      const url = `${window.location.origin}${basePath}shop.html`;
+      const url = `${window.location.origin}${basePath}shop`;
       window.location.assign(url);
     };
   }
