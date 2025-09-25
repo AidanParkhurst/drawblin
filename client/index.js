@@ -14,6 +14,7 @@ import { calculateUIColor, randomPaletteColor } from "./colors.js";
 import { ready as authReady, isAuthConfigured, getUser, getProfileName, upsertProfileName } from './auth.js';
 import { generateGoblinName } from './names.js';
 import { spawnBurst, updateBursts } from './burst.js';
+import Pet from './pets.js';
 
 // -- Game State Initialization --
 let you;
@@ -53,6 +54,7 @@ let homePortal = null;
 
 
 let hasInput = false;
+let pets = [];
 
 // Line intersection utility function for eraser
 function lineIntersect(line1Start, line1End, line2Start, line2End) {
@@ -125,6 +127,12 @@ async function start() {
         name
     ); // Create the local goblin
     try { you.triggerAppear?.(); } catch {}
+
+    // For testing: give the local player a default pet
+    try {
+        const starterPet = new Pet(you, 'empty_hand');
+        pets.push(starterPet);
+    } catch {}
 
     // Calculate UI color based on contrast against background (240, 240, 240)
     you.ui_color = calculateUIColor(you.color, [240, 240, 240]);
@@ -340,6 +348,9 @@ window.draw = () => {
         guessinggame_update(deltaTime);
     }
 
+    // Update pets after goblin state is updated (they follow owners)
+    for (let p of pets) { if (p && typeof p.update === 'function') p.update(deltaTime); }
+
     // Render pass 1: lines (beneath goblins)
     for (let g of goblins) {
         if (g && g._visibleThisFrame && g._linesVisibleThisFrame && typeof g.display_lines === 'function') {
@@ -353,6 +364,9 @@ window.draw = () => {
             g.display(!!g._drawNameThisFrame);
         }
     }
+
+    // Render pets after goblins so they appear in front of lines and mixed with characters
+    for (let p of pets) { if (p && typeof p.display === 'function') p.display(); }
 
     // Render pass 3: overlays (cursor range, cursor dot, speech), always above goblins
     for (let g of goblins) {

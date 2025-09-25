@@ -1,0 +1,164 @@
+:root {
+  --ink: rgba(30,30,30,0.8);
+  --ink-soft: rgba(30,30,30,0.6);
+  --ink-faint: rgba(30,30,30,0.2);
+}
+
+.shop-body {
+  margin: 0;
+  min-height: 100vh;
+  background: #f0f0f0;
+  font-family: 'Neucha', cursive;
+  /* Override global body rules from index.css (canvas page) */
+  display: block;
+  justify-content: initial;
+  align-items: initial;
+  overflow: auto;
+  height: auto;
+}
+
+.shop-main {
+  width: min(1200px, 92vw);
+  margin: 80px auto 60px auto;
+}
+
+.shop-header h1 {
+  margin: 0 0 4px 0;
+  font-size: 42px;
+  color: var(--ink);
+}
+.shop-sub { margin: 0 0 28px 0; color: var(--ink-soft); font-size: 20px; }
+
+.shop-grid {
+  display: grid;
+  /* Force 3 columns at wide sizes so three cards fill the row */
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+@media (max-width: 980px) {
+  .shop-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 620px) {
+  .shop-grid { grid-template-columns: 1fr; }
+}
+
+/* Wide card spans all columns at the top */
+.shop-card--wide {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 16px;
+}
+.shop-card__media--icon {
+  font-size: 40px;
+  width: 72px; height: 72px;
+  display: grid; place-items: center;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.5);
+}
+.shop-card__content .shop-card__fineprint {
+  margin: 6px 2px 0 2px;
+  font-size: 16px;
+  color: rgba(30,30,30,0.45);
+}
+
+/* Back to game link — same as login page */
+.back-link {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+}
+.back-link a {
+  text-decoration: none;
+  font-size: 20px;
+  font-family: 'Neucha';
+  color: rgba(30, 30, 30, 0.5);
+  transition: 0.2s all;
+}
+.back-link a:hover {
+  color: rgba(30, 30, 30, 0.8);
+}
+
+.shop-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 3px dashed var(--ink-faint);
+  border-radius: 12px;
+  background: rgba(255,255,255,0);
+  cursor: pointer;
+  transition: 0.2s all;
+  outline: none;
+}
+.shop-card:hover, .shop-card:focus-visible {
+  border-color: rgba(30,30,30,0.4);
+  transform: scale(1.05);
+}
+.shop-card__media {
+  display: flex; align-items: center; justify-content: center;
+  aspect-ratio: 4/3; border-radius: 10px;
+  /* no border around media per request */
+  transition: 0.2s all;
+}
+/* removed hover border effect on media */
+.shop-card__title { margin: 6px 2px 0 2px; font-size: 22px; color: var(--ink); }
+.shop-card__desc { margin: 0 2px 4px 2px; font-size: 18px; color: var(--ink-soft); }
+
+/* Modal */
+.modal { position: fixed; inset: 0; z-index: 1100; }
+.modal__backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.35); }
+.modal__dialog {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(1000px, 92vw); max-height: 90vh; overflow: hidden;
+  background: rgba(240,240,240,1);
+  border-radius: 14px; box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+  border: 3px dashed var(--ink-faint);
+}
+.modal__close {
+  position: absolute; right: 8px; top: 8px; width: 36px; height: 36px;
+  border-radius: 10px; border: 3px dashed var(--ink-faint);
+  background: rgba(255,255,255,0);
+  font-family: 'Neucha'; font-size: 22px; color: var(--ink);
+  cursor: pointer; transition: 0.2s all;
+}
+.modal__close:hover { border-color: rgba(30,30,30,0.35); }
+.modal__content { display: grid; grid-template-columns: 1.2fr 1fr; gap: 0; }
+
+@media (max-width: 820px) { .modal__content { grid-template-columns: 1fr; } }
+
+.modal__left { padding: 12px; }
+.modal__right { padding: 16px 16px 20px 6px; display: flex; flex-direction: column; }
+.modal__title { margin: 6px 0 6px 0; font-size: 28px; color: var(--ink); }
+.modal__desc { margin: 0 0 16px 0; font-size: 18px; color: var(--ink-soft); }
+.modal__cta { margin-top: auto; }
+
+.btn-buy {
+  width: 100%; padding: 10px 12px; font-size: 20px; font-family: 'Neucha';
+  border: 3px dashed var(--ink-faint); border-radius: 12px; background: rgba(255,255,255,0);
+  color: var(--ink); cursor: pointer; transition: 0.2s all;
+}
+.btn-buy:hover { border-color: rgba(30,30,30,0.4); transform: scale(1.03); }
+
+/* Carousel */
+.carousel { position: relative; border-radius: 10px; overflow: hidden; }
+.carousel__viewport { background: #fff; display: grid; place-items: center; aspect-ratio: 4/3; }
+.carousel__image { max-width: 100%; max-height: 100%; object-fit: contain; }
+.carousel__nav {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 44px; height: 44px; border-radius: 10px; border: 3px dashed var(--ink-faint);
+  background: rgba(255,255,255,0.6); backdrop-filter: blur(2px);
+  font-family: 'Neucha'; font-size: 24px; color: var(--ink);
+  cursor: pointer; transition: 0.2s all;
+}
+.carousel__nav:hover { border-color: rgba(30,30,30,0.35); }
+.carousel__nav--prev { left: 8px; }
+.carousel__nav--next { right: 8px; }
+
+.carousel__thumbs { display: flex; gap: 8px; margin-top: 8px; overflow-x: auto; }
+.carousel__thumb {
+  width: 64px; height: 48px; border-radius: 8px; border: 3px dashed var(--ink-faint);
+  background: #fff; display: grid; place-items: center; cursor: pointer; flex: 0 0 auto; transition: 0.2s all;
+}
+.carousel__thumb:hover, .carousel__thumb--active { border-color: rgba(30,30,30,0.4); transform: scale(1.05); }

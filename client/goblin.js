@@ -46,20 +46,20 @@ class Goblin {
         this.tilt_angle = 5; // Maximum tilt angle in degrees
         this.hasCrown = false; // crown display flag
 
-    // Tool options
-    this.eraserRadius = 15; // default eraser radius in pixels
+        // Tool options
+        this.eraserRadius = 15; // default eraser radius in pixels
 
-    // Appear/spawn animation state
-    this._spawnActive = false;      // currently animating
-    this._spawnTime = 0;            // ms since start
-    this._spawnDuration = 330;      // quick pop under half a second
-    this._popStarted = false;       // has an appear animation started at least
-    this._popCompleted = false;     // finished appear animation
+        // Appear/spawn animation state
+        this._spawnActive = false;      // currently animating
+        this._spawnTime = 0;            // ms since start
+        this._spawnDuration = 330;      // quick pop under half a second
+        this._popStarted = false;       // has an appear animation started at least
+        this._popCompleted = false;     // finished appear animation
 
-    // Per-frame render intent flags (set by update(), consumed by renderer)
-    this._visibleThisFrame = false;       // whether to render goblin sprite/UI this frame
-    this._linesVisibleThisFrame = false;  // whether to render lines this frame
-    this._drawNameThisFrame = false;      // whether to draw the name label
+        // Per-frame render intent flags (set by update(), consumed by renderer)
+        this._visibleThisFrame = false;       // whether to render goblin sprite/UI this frame
+        this._linesVisibleThisFrame = false;  // whether to render lines this frame
+        this._drawNameThisFrame = false;      // whether to draw the name label
     }
 
     // Reset per-frame visibility flags; call once at the start of a frame before any updates
@@ -80,12 +80,12 @@ class Goblin {
     setSize() {
         switch (this.shape) {
             case 'hippo':
+            case 'grubby':
                 this.size = 35;
                 break;
             // These 4 are kinda big, so they have a smaller size
             case 'blimp':
             case 'stanley':
-            case 'grubby':
                 this.size = 40;
                 break;
             // Ricky we specifically want to be smaller, even though he is normal

@@ -116,6 +116,7 @@ async function bindLoginButton() {
   const menuEl = document.getElementById('account-menu');
   const nameInput = document.getElementById('account-name-input');
   const saveBtn = document.getElementById('account-save-name');
+  const shopBtn = document.getElementById('account-open-shop');
   const signoutBtn = document.getElementById('account-signout');
   // Prevent UI clicks from reaching p5 global mouse handlers
   const swallow = (el) => {
@@ -189,6 +190,15 @@ async function bindLoginButton() {
   window.addEventListener('auth:user-changed', (evt) => { closeMenu(); render(evt.detail?.user || null); });
   if (signoutBtn) {
     signoutBtn.onclick = async (e) => { e.preventDefault(); await signOut(); closeMenu(); };
+  }
+  if (shopBtn) {
+    shopBtn.onclick = (e) => {
+      e.preventDefault();
+      // Navigate to shop, preserving current directory
+      const basePath = window.location.pathname.replace(/\/[^/]*$/, '/');
+      const url = `${window.location.origin}${basePath}shop.html`;
+      window.location.assign(url);
+    };
   }
   if (saveBtn && nameInput) {
     const submit = async () => {

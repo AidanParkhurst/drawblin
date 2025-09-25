@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drawblins • Shop</title>
+  <link href="https://fonts.googleapis.com/css2?family=Neucha&display=swap" rel="stylesheet" />
+  <!-- Reuse global styles (login/account menu, chat look, etc.) -->
+  <link rel="stylesheet" href="index.css" />
+  <!-- Page-specific styles -->
+  <link rel="stylesheet" href="shop.css" />
+  <script type="module" src="auth.js"></script>
+  <script type="module" src="store.js"></script>
+  <style>
+    /* Fallback if CSS fails to load */
+    .noscript { font-family: 'Neucha'; color: rgba(30,30,30,0.8); padding: 16px; }
+  </style>
+  <link rel="icon" href="data:," />
+  <meta name="description" content="Customize your goblin in the Drawblins shop" />
+</head>
+<body class="shop-body">
+  <noscript>
+    <div class="noscript">JavaScript is required to use the shop.</div>
+  </noscript>
+  <!-- Reuse login/account menu so users can access account controls here too -->
+  <a id="login-button" href="./login">Login</a>
+  <div id="account-menu" style="display:none;">
+      <div class="account-menu__name-label">Display name</div>
+      <input id="account-name-input" class="account-menu__input" type="text" maxlength="40" placeholder="Your goblin name" />
+      <div class="account-menu__buttons">
+          <button id="account-open-shop" class="account-menu__action">Shop</button>
+          <button id="account-save-name" class="account-menu__action">Save</button>
+          <button id="account-signout" class="account-menu__action account-menu__action--danger">Sign out</button>
+      </div>
+  </div>
+
+  <main class="shop-main">
+    <header class="shop-header">
+      <h1>Customize your goblin!</h1>
+      <p class="shop-sub">Pick a pack to make your goblin pop.</p>
+    </header>
+
+    <div class="back-link">
+      <a href="./"> &lt;- Back to game</a>
+    </div>
+
+    <section id="shop-grid" class="shop-grid" aria-label="Shop deals grid">
+      <!-- Premium membership horizontal entry -->
+      <article class="shop-card shop-card--wide" data-key="premium" tabindex="0">
+        <div class="shop-card__media shop-card__media--icon" aria-hidden="true">⭐</div>
+        <div class="shop-card__content">
+          <h3 class="shop-card__title">Premium Membership</h3>
+          <p class="shop-card__desc">Access all bundles this month for one simple recurring fee.</p>
+          <p class="shop-card__fineprint">Includes Companion Critter Collection, Big Win Bling Bundle, Poppin Goblin Pack, and new drops while active.</p>
+        </div>
+      </article>
+      <!-- Cards populated by shop.js (with fallback static HTML below) -->
+      <article class="shop-card" data-key="critter" tabindex="0">
+        <div class="shop-card__media placeholder" aria-hidden="true">🐾</div>
+        <h3 class="shop-card__title">The Companion Critter Collection</h3>
+        <p class="shop-card__desc">Adorable pets to keep your goblin company.</p>
+      </article>
+      <article class="shop-card" data-key="bling" tabindex="0">
+        <div class="shop-card__media placeholder" aria-hidden="true">👑</div>
+        <h3 class="shop-card__title">The Big Win Bling Bundle</h3>
+        <p class="shop-card__desc">Halos, wings, and shiny things to flex your dubs.</p>
+      </article>
+      <article class="shop-card" data-key="poppin" tabindex="0">
+        <div class="shop-card__media placeholder" aria-hidden="true">💥</div>
+        <h3 class="shop-card__title">The Poppin Goblin Pack</h3>
+        <p class="shop-card__desc">Join the coolest goblins in the room.</p>
+      </article>
+    </section>
+  </main>
+
+  <!-- Modal Overlay -->
+  <div id="deal-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="modal-title" style="display:none;">
+    <div class="modal__backdrop" data-action="close"></div>
+    <div class="modal__dialog">
+      <button class="modal__close" aria-label="Close" title="Close" data-action="close">×</button>
+      <div class="modal__content">
+        <div class="modal__left">
+          <div class="carousel">
+            <button class="carousel__nav carousel__nav--prev" data-action="prev" aria-label="Previous image">‹</button>
+            <div class="carousel__viewport">
+              <img class="carousel__image" alt="Preview" />
+            </div>
+            <button class="carousel__nav carousel__nav--next" data-action="next" aria-label="Next image">›</button>
+          </div>
+          <div class="carousel__thumbs" role="tablist" aria-label="Image thumbnails"></div>
+        </div>
+        <div class="modal__right">
+          <h2 id="modal-title" class="modal__title">Pack Title</h2>
+          <p class="modal__desc">Pack description goes here.</p>
+          <div class="modal__cta">
+            <button id="modal-buy" class="btn-buy">Buy!</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

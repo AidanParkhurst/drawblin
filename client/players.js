@@ -9,6 +9,10 @@ class PlayerList {
         this.spacing = spacing; // Spacing between circles
         this.profileDisplay = new ProfileDisplay(); // Create profile display instance
     this.pointBursts = []; // { userId, points, age, duration }
+    // Smooth hover scale for the local player's icon
+    this.selfHoverScale = 1.0;      // current scale applied to your own icon
+    this.selfHoverTarget = 1.0;     // target scale (1.06 when hovered, 1.0 otherwise)
+    this.selfHoverDurationMs = 200; // time to reach target
     }
 
     update() {
@@ -19,7 +23,9 @@ class PlayerList {
         // Only handle goblin hover/click if profile display is not visible
         if (!this.profileDisplay.visible) {
             var hovered_goblin = this.checkHover(mouseX, mouseY);
-            if (hovered_goblin && hovered_goblin.id === you.id) {
+            const hoveringSelf = Boolean(hovered_goblin && hovered_goblin.id === you.id);
+            // Update cursor and click for own profile
+            if (hoveringSelf) {
                 cursor('pointer'); // Change cursor to pointer when hovering over a goblin
                 if (mouseIsPressed) {
                     // Calculate the position of the clicked goblin's icon
@@ -33,6 +39,11 @@ class PlayerList {
                     this.profileDisplay.show(hovered_goblin.id, playerIconX, playerIconY);
                 }
             }
+            // Smoothly animate self hover scale toward target (1.06 when hovered)
+            this.selfHoverTarget = hoveringSelf ? 1.06 : 1.0;
+            const dt = (typeof deltaTime === 'number' ? deltaTime : 16);
+            const t = Math.min(1, dt / this.selfHoverDurationMs);
+            this.selfHoverScale = lerp(this.selfHoverScale, this.selfHoverTarget, t);
             // Don't reset cursor here - let other UI elements handle it
         }
         this.display(); // Draw the player list
@@ -55,6 +66,10 @@ class PlayerList {
             // Draw circle with chatter's color
             fill(goblin.color[0], goblin.color[1], goblin.color[2]);
             translate(x, y);
+            // Slight scale-up on your own icon when hovered (with smoothing)
+            if (goblin.id === you.id) {
+                scale(this.selfHoverScale);
+            }
             ellipse(0, 0, this.circleSize * 1.2, this.circleSize * 1.2);
             imageMode(CENTER);
             var sprite = assets.sprites[goblin.shape];
