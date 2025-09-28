@@ -1,18 +1,54 @@
 import { you, goblins } from './index.js';
 import { assets } from './assets.js'; // Import assets for the player list
 import ProfileDisplay from './profile_display.js';
+import BasicProfileDisplay from './profile_display_basic.js';
+import { isAuthConfigured, getUser, ready as authReady } from './auth.js';
 import { spawnBurst } from './burst.js';
 
 class PlayerList {
     constructor(circleSize = 50, spacing = 20) {
         this.circleSize = circleSize; // Size of each circle representing a player
         this.spacing = spacing; // Spacing between circles
-        this.profileDisplay = new ProfileDisplay(); // Create profile display instance
+    // Decide which profile display to use (basic if unauthenticated, advanced if authenticated)
+    this.profileDisplay = new BasicProfileDisplay(); // default
+    this._useAdvanced = false;
+    this._initAuthGate();
     this.pointBursts = []; // { userId, points, age, duration }
     // Smooth hover scale for the local player's icon
     this.selfHoverScale = 1.0;      // current scale applied to your own icon
     this.selfHoverTarget = 1.0;     // target scale (1.06 when hovered, 1.0 otherwise)
     this.selfHoverDurationMs = 200; // time to reach target
+    }
+
+    async _initAuthGate() {
+        try { if (isAuthConfigured()) await authReady(); } catch {}
+        this._maybeSwapProfileDisplay();
+        // Listen for auth changes
+        window.addEventListener('auth:user-changed', () => this._maybeSwapProfileDisplay());
+    }
+
+    _maybeSwapProfileDisplay() {
+        const authed = isAuthConfigured() && !!getUser();
+        if (authed && !this._useAdvanced) {
+            // Swap to advanced
+            const prev = this.profileDisplay;
+            const adv = new ProfileDisplay();
+            // Transfer minimal state if panel open on self
+            if (prev && prev.visible) {
+                adv.show(prev.targetGoblin?.id || you.id, prev.playerX, prev.playerY);
+            }
+            this.profileDisplay = adv;
+            this._useAdvanced = true;
+        } else if (!authed && this._useAdvanced) {
+            // Swap to basic
+            const prev = this.profileDisplay;
+            const basic = new BasicProfileDisplay();
+            if (prev && prev.visible) {
+                basic.show(prev.targetGoblin?.id || you.id, prev.playerX, prev.playerY);
+            }
+            this.profileDisplay = basic;
+            this._useAdvanced = false;
+        }
     }
 
     update() {

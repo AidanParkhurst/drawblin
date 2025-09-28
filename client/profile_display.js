@@ -1,10 +1,12 @@
-import { you, goblins } from './index.js';
+import { you, goblins, pets } from './index.js';
+import Pet from './pets.js';
+import { fetchEntitlements, hasPremium, hasPetPack, hasBlingPack } from './entitlements.js';
 import { assets } from './assets.js';
 import { sendMessage } from './network.js';
 import { calculateUIColor, palette } from './colors.js'; 
 
 class ProfileDisplay {
-    constructor(width = 420, height = 220) {
+    constructor(width = 540, height = 230) {
         this.width = width;
         this.height = height;
         this.x = 0; // Will be set based on player position
@@ -20,7 +22,7 @@ class ProfileDisplay {
         this.colorSize = 20;
         this.colorSpacing = 5;
         this.colorsPerRow = 4;
-        this.colorStartX = this.width * 0.58; // Slightly more to the right to balance layout
+        this.colorStartX = this.width * 0.40; // slightly left; allows tighter right section
         this.colorStartY = 50;
         
         this.hoveredColor = -1;
@@ -33,6 +35,27 @@ class ProfileDisplay {
         // Arrow configuration (adjust these to tweak placement)
         this.arrowOffset = 80; // pull arrows in a bit to avoid hugging left edge
         this.arrowSize = 15;   // size of arrow (width from tip to base)
+
+        // Pet & Bling picker state
+        this.petKeys = ['pet_bunny','pet_butterfly','pet_croc','pet_mole','pet_puffle'];
+        this.blingKeys = ['crown','halo','chain','shades'];
+        this.petIndex = 0;
+        this.blingIndex = 0;
+        this.petLeftHover = false; this.petRightHover = false;
+        this.blingLeftHover = false; this.blingRightHover = false;
+        this.petPickerY = 58; // relative to panel top
+        this.blingPickerY = 150; // stacked below pet picker (reduced vertical gap)
+        // Compute picker center so (color picker -> pickers gap) ~= (goblin -> color picker gap)
+        this._spriteBaseX = 100; // must match spriteX logic in display()
+        const gapGoblinToColors = this.colorStartX - this._spriteBaseX; // mirror that gap on right
+        this.pickerCenterX = this.colorStartX + gapGoblinToColors + 80; // symmetric visual spacing
+        this.pickerArrowOffset = 60;
+        this.pickerArrowSize = 16;
+        // Entitlement flags (resolved async); default false until loaded
+        this._entitlementsLoaded = false;
+        this._canShowPet = false;
+        this._canShowBling = false;
+        this._loadingEntitlements = false;
     }
     
     show(goblinId, playerX, playerY) {
@@ -41,6 +64,24 @@ class ProfileDisplay {
         this.playerY = playerY;
         this.visible = true;
         this.updatePosition(); // Update position based on player icon location
+        // Kick off entitlement load if needed (only matters for local player)
+        if (this.targetGoblin === you) {
+            this._ensureEntitlements();
+        }
+        // Sync picker indices with current selections (pet / bling) when opening
+        if (this.targetGoblin === you) {
+            try {
+                const existingPet = pets.find(p => p.owner === you);
+                if (existingPet) {
+                    const idx = this.petKeys.indexOf(existingPet.spriteKey);
+                    if (idx >= 0) this.petIndex = idx;
+                }
+                if (you.blingType) {
+                    const bIdx = this.blingKeys.indexOf(you.blingType);
+                    if (bIdx >= 0) this.blingIndex = bIdx;
+                }
+            } catch (_) { /* non-fatal */ }
+        }
     }
     
     hide() {
@@ -66,8 +107,10 @@ class ProfileDisplay {
         
         // Check for mouse interactions
         this.hoveredColor = -1;
-        this.leftArrowHover = false;
-        this.rightArrowHover = false;
+    this.leftArrowHover = false;
+    this.rightArrowHover = false;
+    this.petLeftHover = false; this.petRightHover = false;
+    this.blingLeftHover = false; this.blingRightHover = false;
 
         // Arrow hitboxes use same sprite center as rendering to align precisely
         const spriteX = this.x + 100; // keep in sync with display() spriteX
@@ -89,6 +132,28 @@ class ProfileDisplay {
             this.rightArrowHover = true;
             cursor('pointer');
             if (justPressed) this.cycleShape(1);
+        }
+
+        // Pet picker arrows
+        const pCenterX = this.x + this.pickerCenterX;
+        if (this._canShowPet) {
+            const petLeft = { x: pCenterX - this.pickerArrowOffset, y: this.y + this.petPickerY - this.pickerArrowSize/2, w: this.pickerArrowSize, h: this.pickerArrowSize };
+            const petRight = { x: pCenterX + this.pickerArrowOffset - this.pickerArrowSize, y: this.y + this.petPickerY - this.pickerArrowSize/2, w: this.pickerArrowSize, h: this.pickerArrowSize };
+            if (mouseX >= petLeft.x && mouseX <= petLeft.x + petLeft.w && mouseY >= petLeft.y && mouseY <= petLeft.y + petLeft.h) {
+                this.petLeftHover = true; cursor('pointer'); if (justPressed) this.cyclePet(-1);
+            } else if (mouseX >= petRight.x && mouseX <= petRight.x + petRight.w && mouseY >= petRight.y && mouseY <= petRight.y + petRight.h) {
+                this.petRightHover = true; cursor('pointer'); if (justPressed) this.cyclePet(1);
+            }
+        }
+        // Bling picker arrows
+        if (this._canShowBling) {
+            const blingLeft = { x: pCenterX - this.pickerArrowOffset, y: this.y + this.blingPickerY - this.pickerArrowSize/2, w: this.pickerArrowSize, h: this.pickerArrowSize };
+            const blingRight = { x: pCenterX + this.pickerArrowOffset - this.pickerArrowSize, y: this.y + this.blingPickerY - this.pickerArrowSize/2, w: this.pickerArrowSize, h: this.pickerArrowSize };
+            if (mouseX >= blingLeft.x && mouseX <= blingLeft.x + blingLeft.w && mouseY >= blingLeft.y && mouseY <= blingLeft.y + blingLeft.h) {
+                this.blingLeftHover = true; cursor('pointer'); if (justPressed) this.cycleBling(-1);
+            } else if (mouseX >= blingRight.x && mouseX <= blingRight.x + blingRight.w && mouseY >= blingRight.y && mouseY <= blingRight.y + blingRight.h) {
+                this.blingRightHover = true; cursor('pointer'); if (justPressed) this.cycleBling(1);
+            }
         }
         
         // Check color palette interactions
@@ -159,7 +224,7 @@ class ProfileDisplay {
         
         push();
         
-        // Draw the main rectangle with dotted border (same style as chat and other UI)
+    // Draw the main rectangle with dotted border (same style as chat and other UI)
         fill(240); 
         drawingContext.setLineDash([30, 20]); // Set dashed line style
         stroke(you.ui_color[0], you.ui_color[1], you.ui_color[2], 100);
@@ -223,7 +288,7 @@ class ProfileDisplay {
             ellipse(spriteX, spriteY, spriteSize, spriteSize);
         }
 
-        // Draw shape selection arrows
+    // Draw shape selection arrows
         push();
         noStroke();
         // Left arrow (on left side, pointing left/outward)
@@ -234,7 +299,7 @@ class ProfileDisplay {
         triangle(spriteX + arrowOffset, spriteY, spriteX + arrowOffset - arrowSize, spriteY - arrowSize/2, spriteX + arrowOffset - arrowSize, spriteY + arrowSize/2);
         pop();
         
-        // Draw color palette title
+    // Draw color palette title
         fill(you.ui_color[0], you.ui_color[1], you.ui_color[2]);
         textAlign(LEFT, TOP);
         textSize(16);
@@ -274,13 +339,118 @@ class ProfileDisplay {
     const displayName = (this.targetGoblin.name && this.targetGoblin.name.trim()) ? this.targetGoblin.name : `Player ${Math.round(this.targetGoblin.id)}`;
     text(displayName, this.x + 20, this.y + 20);
 
-        // Draw close instruction
+    // Right side pickers labels & arrows
+    this.displayPickers();
+
+    // Draw close instruction
         textAlign(CENTER, BOTTOM);
         textSize(12);
         fill(you.ui_color[0], you.ui_color[1], you.ui_color[2], 200);
         text("Press Escape or click outside to close", this.x + this.width/2, this.y + this.height - 5);
         
         pop();
+    }
+
+    displayPickers() {
+        // Use the goblin's base color (not the derived UI contrast color) for picker tinting
+        const c = you.color;
+        const centerX = this.x + this.pickerCenterX;
+        textAlign(CENTER, BOTTOM);
+        textSize(14);
+        fill(c[0], c[1], c[2]);
+        if (this._canShowPet) text('Pet', centerX, this.y + this.petPickerY - 25);
+        if (this._canShowBling) text('Bling', centerX, this.y + this.blingPickerY - 25);
+
+        // Arrows style function
+        const drawArrow = (x, y, dir, hover) => {
+            push();
+            noStroke();
+            fill(c[0], c[1], c[2], hover ? 255 : 150);
+            const size = this.pickerArrowSize;
+            if (dir === 'left') {
+                triangle(x, y, x + size, y - size/2, x + size, y + size/2);
+            } else {
+                triangle(x, y, x - size, y - size/2, x - size, y + size/2);
+            }
+            pop();
+        };
+
+        // Pet arrows
+        if (this._canShowPet) {
+            drawArrow(centerX - this.pickerArrowOffset, this.y + this.petPickerY, 'left', this.petLeftHover);
+            drawArrow(centerX + this.pickerArrowOffset, this.y + this.petPickerY, 'right', this.petRightHover);
+        }
+        if (this._canShowBling) {
+            drawArrow(centerX - this.pickerArrowOffset, this.y + this.blingPickerY, 'left', this.blingLeftHover);
+            drawArrow(centerX + this.pickerArrowOffset, this.y + this.blingPickerY, 'right', this.blingRightHover);
+        }
+
+        // Selected sprites
+        imageMode(CENTER); noStroke();
+        if (this._canShowPet) {
+            const petKey = this.petKeys[this.petIndex % this.petKeys.length];
+            const petSprite = assets?.sprites?.[petKey];
+            if (petSprite) {
+                const pw = 48; const ph = pw * (petSprite.height / petSprite.width);
+                push();
+                tint(c[0], c[1], c[2], 220);
+                image(petSprite, centerX, this.y + this.petPickerY, pw, ph);
+                pop();
+            }
+        }
+        if (this._canShowBling) {
+            const blingKey = this.blingKeys[this.blingIndex % this.blingKeys.length];
+            const blingSprite = assets?.sprites?.[blingKey];
+            if (blingSprite) {
+                const bw = 52; const bh = bw * (blingSprite.height / blingSprite.width);
+                image(blingSprite, centerX, this.y + this.blingPickerY, bw, bh);
+            }
+        }
+    }
+
+    cyclePet(dir) {
+        if (this.targetGoblin !== you) return;
+        if (!this._canShowPet) return; // gated
+        this.petIndex = (this.petIndex + dir + this.petKeys.length) % this.petKeys.length;
+        const chosenKey = this.petKeys[this.petIndex];
+        try {
+            let existingPet = pets.find(p => p.owner === you);
+            if (!existingPet) {
+                existingPet = new Pet(you, chosenKey);
+                pets.push(existingPet);
+            } else {
+                existingPet.spriteKey = chosenKey;
+                if (typeof existingPet.setSize === 'function') existingPet.setSize();
+            }
+        } catch (_) { /* ignore */ }
+        // (Future: send to server / persist)
+    }
+    cycleBling(dir) {
+        if (this.targetGoblin !== you) return;
+        if (!this._canShowBling) return; // gated
+        this.blingIndex = (this.blingIndex + dir + this.blingKeys.length) % this.blingKeys.length;
+        // Apply immediately to goblin representation
+        you.blingType = this.blingKeys[this.blingIndex];
+        // Do NOT force hasBling here; only winners show bling live.
+    }
+
+    async _ensureEntitlements() {
+        if (this._loadingEntitlements || this._entitlementsLoaded) return;
+        this._loadingEntitlements = true;
+        try {
+            await fetchEntitlements();
+            this._canShowPet = hasPetPack();
+            this._canShowBling = hasBlingPack();
+            if (hasPremium()) { // premium unlocks all
+                this._canShowPet = true;
+                this._canShowBling = true;
+            }
+            this._entitlementsLoaded = true;
+        } catch (e) {
+            console.warn('Entitlement load failed:', e?.message || e);
+        } finally {
+            this._loadingEntitlements = false;
+        }
     }
 
     cycleShape(direction) {

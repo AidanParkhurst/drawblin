@@ -1,7 +1,6 @@
-// Items, Tools
+// Tools
 import brushImg from './assets/brush.png';
 import eraserImg from './assets/eraser.png';
-import crownImg from './assets/crown.png';
 // Goblins
 import brushHandImg from './assets/brushhand.png';
 import emptyHandImg from './assets/emptyhand.png';
@@ -17,6 +16,11 @@ import petButterflyImg from './assets/pets/pet_butterfly.png';
 import petCrocImg from './assets/pets/pet_croc.png';
 import petMoleImg from './assets/pets/pet_mole.png';
 import petPuffleImg from './assets/pets/pet_puffle.png';
+// Bling
+import crownImg from './assets/bling/crown.png';
+import chainImg from './assets/bling/chain.png';
+import haloImg from './assets/bling/halo.png';
+import shadesImg from './assets/bling/shades.png';
 
 import neuchaFont from './assets/Neucha-Regular.ttf';
 
@@ -28,6 +32,9 @@ class Assets {
             "brush": brushImg,
             "eraser": eraserImg,
             "crown": crownImg,
+            "chain": chainImg,
+            "halo": haloImg,
+            "shades": shadesImg,
             "manny": mannyImg,
             "stanley": stanleyImg,
             "ricky": rickyImg,

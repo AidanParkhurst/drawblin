@@ -448,7 +448,7 @@ function quickdraw_update(delta) {
         for (let goblin of goblins) goblin.update(delta, true, true);
     headerText = `Waiting for players...`;
     } else if (game_state === 'drawing') {
-        for (let g of goblins) g.hasCrown = false;
+    for (let g of goblins) { g.hasBling = false; }
         you.update(delta);
     headerText = `Draw [${prompt}]`;
     } else if (game_state === 'pre-voting') {
@@ -465,11 +465,16 @@ function quickdraw_update(delta) {
         for (let goblin of goblins) {
             if (last_winner !== -1 && goblin.id === last_winner) {
                 goblin.update(delta, true, true);
-                goblin.hasCrown = true; // winner gets crown
+                goblin.hasBling = true;
+                // Use existing preference if set; otherwise assign one time
+                if (!goblin.blingType) {
+                    const pool = ['crown','halo','chain','shades'];
+                    goblin.blingType = pool[Math.floor(Math.random()*pool.length)];
+                }
                 winnerName = goblin.name;
             } else {
                 goblin.update(delta, false, true);
-                goblin.hasCrown = false;
+                goblin.hasBling = false;
             }
         }
         headerText = last_winner !== -1 ? `Winner: ${winnerName}!` : 'No winner';
@@ -490,7 +495,15 @@ function guessinggame_update(delta) {
             }
         }
         for (let goblin of goblins) {
-            goblin.hasCrown = (top && goblin.id === top.userId);
+            if (top && goblin.id === top.userId) {
+                goblin.hasBling = true;
+                if (!goblin.blingType) {
+                    const pool = ['crown','halo','chain','shades'];
+                    goblin.blingType = pool[Math.floor(Math.random()*pool.length)];
+                }
+            } else {
+                goblin.hasBling = false;
+            }
             goblin.update(delta, true, true);
         }
         if (results && results.length) {
@@ -506,7 +519,7 @@ function guessinggame_update(delta) {
             } else {
                 goblin.update(delta, false);
             }
-            goblin.hasCrown = false; // no crowns during drawing
+            goblin.hasBling = false; // no bling during drawing
         }
         if (you.id === current_artist) {
             header = `Draw a ${prompt}`;
@@ -521,7 +534,7 @@ function guessinggame_update(delta) {
             } else {
                 goblin.update(delta, false);
             }
-            goblin.hasCrown = false; // crowns reserved for waiting scoreboard in guessing game
+            goblin.hasBling = false; // bling reserved for waiting scoreboard in guessing game
         }
     // Server sends fully bracketed phrase on reveal; display colored without timer
         header = "It was a " + prompt;
@@ -831,4 +844,4 @@ function onmessage(event) {
     }
 }
 
-export { you, goblins, chat, onopen, onmessage };
+export { you, goblins, chat, onopen, onmessage, pets };

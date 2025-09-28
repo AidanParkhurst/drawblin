@@ -44,7 +44,9 @@ class Goblin {
         this.walk_speed = 0.3; // Speed of the walking animation
         this.bounce_height = 3; // How high the goblin bounces
         this.tilt_angle = 5; // Maximum tilt angle in degrees
-        this.hasCrown = false; // crown display flag
+    // Bling system
+    this.hasBling = false;       // whether to render a bling accessory (winner)
+    this.blingType = 'crown';    // which bling asset: crown|halo|chain|shades
 
         // Tool options
         this.eraserRadius = 15; // default eraser radius in pixels
@@ -245,7 +247,7 @@ class Goblin {
             fill(this.ui_color[0], this.ui_color[1], this.ui_color[2], 200);
             textAlign(CENTER, BOTTOM);
             textSize(14);
-            const nameOffset = this.hasCrown ? -60 : -50;
+            const nameOffset = this.hasBling && (this.blingType === 'crown' || this.blingType === 'halo') ? -60 : -50;
             text(this.name, 0, nameOffset);
             pop();
         }
@@ -262,7 +264,7 @@ class Goblin {
             scale(-1, 1); // Flip horizontally
         }
         image(assets.sprites[this.shape], 0, 0, this.size, height);
-        if (this.hasCrown) this.display_crown();
+    if (this.hasBling) this.display_bling();
         pop();
 
         // OG: just a circle
@@ -286,23 +288,52 @@ class Goblin {
         pop();
     }
 
-    // Render a crown above the goblin (used for top scorer in waiting scoreboard)
-    display_crown() {
-        if (!assets?.sprites?.crown) return;
-        let height = this.size * (assets.sprites[this.shape].height / assets.sprites[this.shape].width);
+    // Render winner bling (crown|halo floating; shades|chain fixed with custom offsets)
+    display_bling() {
+        const sprite = assets?.sprites?.[this.blingType];
+        if (!sprite) return;
+        let bodyHeight = this.size * (assets.sprites[this.shape].height / assets.sprites[this.shape].width);
         push();
         imageMode(CENTER);
-        noTint(); // ensure crown keeps original colors
-        // Base vertical position above head
-        const baseY = -(height/2 + 10);
+        noTint();
 
-        // Gentle bobbing: amplitude 5px, period ~ (2PI / 0.08) frames (~78 frames) => about 1.3s at 60fps
-        const bob = Math.sin((frameCount * 0.03) + (this.id % 1000)) * 5;
-        const crownY = baseY + bob;
-        const crownWidth = this.size * 0.5;
-        const crownHeight = crownWidth * (assets.sprites.crown.height / assets.sprites.crown.width);
-        image(assets.sprites.crown, 0, crownY, crownWidth, crownHeight);
+        // Common width heuristics
+        let targetWidth;
+        let xOffset = 0;
+        let yOffset = 0;
+        let floating = false;
+        switch (this.blingType) {
+            case 'crown':
+                floating = true;
+                targetWidth = this.size * 0.5;
+                yOffset = -(bodyHeight/2 + 10);
+                break;
+            case 'halo':
+                floating = true;
+                targetWidth = this.size * 0.65;
+                yOffset = -(bodyHeight/2 + 18);
+                break;
+            case 'shades':
+                targetWidth = this.size * 0.75;
+                // Slight forward (if flipped) adjust; keep centered
+                yOffset = -bodyHeight * 0.05;
+                break;
+            case 'chain':
+                targetWidth = this.size * 0.9;
+                yOffset = bodyHeight * 0.15; // hangs on chest
+                break;
+            default:
+                targetWidth = this.size * 0.5;
+        }
+        const ratio = sprite.height / sprite.width;
+        const targetHeight = targetWidth * ratio;
 
+        // Bobbing for floating types
+        if (floating) {
+            const bob = Math.sin((frameCount * 0.03) + (this.id % 997)) * 5; // reuse style from crown
+            yOffset += bob;
+        }
+        image(sprite, xOffset, yOffset, targetWidth, targetHeight);
         pop();
     }
 
