@@ -99,7 +99,12 @@ export async function recordCheckoutSessionIdentity(event) {
   const resolvedEmail = suppliedAccountEmail || baseEmail; // preference per requirement
   const { userId } = await resolveUserByEmail(supa, resolvedEmail);
 
-  // Use upsert; handle case where payment_intent.succeeded already inserted first.
+  console.log('Recording checkout session identity:', {
+    sessionId, paymentIntentId, amount, currency, createdUnix,
+    customerEmail: baseEmail, customerName: customer.name || null,
+    suppliedAccountEmail, resolvedEmail, userId
+  });
+  // Unified insert/update payload (will be merged onto any existing payment_intent row)
   const insertPayload = {
     stripe_event_id: event.id,
     stripe_session_id: sessionId,
@@ -115,24 +120,24 @@ export async function recordCheckoutSessionIdentity(event) {
     resolved_user_id: userId || null,
   raw_session: event
   };
-
-  // If a record with this payment_intent already exists (from payment_intent.succeeded), merge minimal identity fields.
   try {
-    const { error } = await supa.from('payments').upsert(insertPayload, { onConflict: 'stripe_session_id' });
-    if (error) {
-      // Fallback: attempt update by payment_intent_id
-      if (paymentIntentId) {
-        const { error: updErr } = await supa.from('payments').update({
-          stripe_session_id: sessionId,
-          raw_session: event,
-          status: supa.rpc ? undefined : 'session_completed'
-        }).eq('payment_intent_id', paymentIntentId);
-        if (updErr) throw updErr;
-      } else throw error;
+    if (paymentIntentId) {
+      // Prefer unification on payment_intent_id to avoid race duplication
+      const { error } = await supa.from('payments').upsert(insertPayload, { onConflict: 'payment_intent_id' });
+      if (error) throw error;
+    } else {
+      // Rare: no payment_intent yet (async capture?) – fall back to session id uniqueness
+      const { error } = await supa.from('payments').upsert(insertPayload, { onConflict: 'stripe_session_id' });
+      if (error) throw error;
     }
   } catch (e) {
     console.error('Failed to upsert checkout session identity:', e.message);
     throw e;
+  }
+
+  // If the intent has already succeeded (possible race: intent event arrived first) try entitlement grant now
+  if (paymentIntentId) {
+    try { await applyEntitlementsForPaymentIntent(paymentIntentId); } catch (e) { console.warn('Post-session entitlement attempt failed:', e.message); }
   }
   return true;
 }
@@ -233,14 +238,21 @@ function extractLineItemPriceIds(intent) {
 async function applyEntitlementsForPaymentIntent(paymentIntentId) {
   const supa = getAdminSupabase();
   if (!supa) return;
-  // Fetch payment + intent payload
-  const { data, error } = await supa.from('payments').select('id, resolved_user_id, raw_payment_intent, resolved_user_email').eq('payment_intent_id', paymentIntentId).maybeSingle();
+  // Fetch payment + payloads
+  const { data, error } = await supa.from('payments').select('id, resolved_user_id, raw_payment_intent, raw_session, resolved_user_email, status').eq('payment_intent_id', paymentIntentId).maybeSingle();
   if (error || !data || !data.resolved_user_id) return; // nothing to do
   const intent = data.raw_payment_intent?.data?.object || {};
   const userId = data.resolved_user_id;
-
-  const priceIds = extractLineItemPriceIds(intent);
-  if (!priceIds.length) return;
+  let priceIds = extractLineItemPriceIds(intent);
+  if (!priceIds.length) {
+    // Fallback: attempt to derive from session metadata if intent not yet stored with charges metadata
+    const sessionObj = data.raw_session?.data?.object || {};
+    const md = sessionObj.metadata || {};
+    for (const v of Object.values(md || {})) {
+      if (typeof v === 'string' && v.startsWith('price_')) priceIds.push(v);
+    }
+  }
+  if (!priceIds.length) return; // still nothing
 
   await ensureUserEntitlementsRow(supa, userId);
 
