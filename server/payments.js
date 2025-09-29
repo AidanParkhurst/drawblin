@@ -1,6 +1,8 @@
 // server/payments.js
 // Utilities for recording Stripe payment events in Supabase.
 import { getAdminSupabase } from './supabase.js';
+import Stripe from 'stripe';
+import { STRIPE_SECRET_KEY } from './env.js';
 
 /*
 Entitlement-focused schema (no currency balance). Suggested structure:
@@ -104,7 +106,46 @@ export async function recordCheckoutSessionIdentity(event) {
     customerEmail: baseEmail, customerName: customer.name || null,
     suppliedAccountEmail, resolvedEmail, userId
   });
+  // Attempt to extract price IDs for entitlement mapping.
+  // The raw event usually lacks expanded line_items; if absent try retrieving expanded session from Stripe.
+  let priceIdsFromSession = [];
+  const collectFrom = (sess) => {
+    if (!sess) return;
+    // Expanded line_items
+    const li = sess.line_items?.data || [];
+    for (const item of li) {
+      const pid = item?.price?.id;
+      if (pid && pid.startsWith('price_')) priceIdsFromSession.push(pid);
+    }
+    // Older API shapes / display_items
+    const di = sess.display_items || [];
+    for (const d of di) {
+      const pid = d?.price?.id || d?.plan?.id;
+      if (pid && pid.startsWith('price_')) priceIdsFromSession.push(pid);
+    }
+    // Metadata fallbacks (sometimes integrators inject price ids manually)
+    const md = sess.metadata || {};
+    for (const v of Object.values(md)) {
+      if (typeof v === 'string' && v.startsWith('price_')) priceIdsFromSession.push(v);
+    }
+  };
+  collectFrom(session);
+  // If still empty and we have secret & session id, attempt an expand fetch
+  if (!priceIdsFromSession.length && STRIPE_SECRET_KEY && session.id) {
+    try {
+      const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
+      const expanded = await stripe.checkout.sessions.retrieve(session.id, { expand: ['line_items'] });
+      collectFrom(expanded);
+    } catch (e) {
+      console.warn('Expanded session fetch failed (non-fatal):', e.message);
+    }
+  }
+  // De-dupe
+  priceIdsFromSession = Array.from(new Set(priceIdsFromSession));
   // Unified insert/update payload (will be merged onto any existing payment_intent row)
+  // Enrich raw event with extracted price ids for later entitlement fallback
+  const enrichedEvent = { ...event, extracted_price_ids: priceIdsFromSession };
+
   const insertPayload = {
     stripe_event_id: event.id,
     stripe_session_id: sessionId,
@@ -118,7 +159,7 @@ export async function recordCheckoutSessionIdentity(event) {
     account_email_supplied: suppliedAccountEmail || null,
     resolved_user_email: resolvedEmail || null,
     resolved_user_id: userId || null,
-  raw_session: event
+    raw_session: enrichedEvent
   };
   try {
     if (paymentIntentId) {
@@ -138,6 +179,9 @@ export async function recordCheckoutSessionIdentity(event) {
   // If the intent has already succeeded (possible race: intent event arrived first) try entitlement grant now
   if (paymentIntentId) {
     try { await applyEntitlementsForPaymentIntent(paymentIntentId); } catch (e) { console.warn('Post-session entitlement attempt failed:', e.message); }
+  } else if (priceIdsFromSession.length && userId) {
+    // Edge case: no payment intent (uncommon) but we can still seed entitlements proactively.
+    try { await applyEntitlementsForSessionOnly(enrichedEvent, userId); } catch (e) { console.warn('Session-only entitlement grant failed:', e.message); }
   }
   return true;
 }
@@ -245,16 +289,34 @@ async function applyEntitlementsForPaymentIntent(paymentIntentId) {
   const userId = data.resolved_user_id;
   let priceIds = extractLineItemPriceIds(intent);
   if (!priceIds.length) {
-    // Fallback: attempt to derive from session metadata if intent not yet stored with charges metadata
     const sessionObj = data.raw_session?.data?.object || {};
+    // Expanded line items (if we enriched earlier, they may now exist)
+    const li = sessionObj.line_items?.data || [];
+    for (const item of li) {
+      const pid = item?.price?.id;
+      if (pid && pid.startsWith('price_')) priceIds.push(pid);
+    }
+    // Enriched extraction list
+    const enrichedList = data.raw_session?.extracted_price_ids || [];
+    for (const pid of enrichedList) {
+      if (pid && pid.startsWith('price_')) priceIds.push(pid);
+    }
+    // Metadata fallback
     const md = sessionObj.metadata || {};
-    for (const v of Object.values(md || {})) {
+    for (const v of Object.values(md)) {
       if (typeof v === 'string' && v.startsWith('price_')) priceIds.push(v);
     }
   }
+  priceIds = Array.from(new Set(priceIds));
   if (!priceIds.length) return; // still nothing
 
+  // Fetch current entitlements row (or create) so we can avoid duplicate events
   await ensureUserEntitlementsRow(supa, userId);
+  let current = null;
+  try {
+    const { data: row } = await supa.from('user_entitlements').select('has_premium, pet_pack, win_bling_pack, more_goblins_pack').eq('user_id', userId).maybeSingle();
+    current = row || {};
+  } catch {}
 
   const updates = {}; const granted = [];
   for (const pid of priceIds) {
@@ -262,16 +324,21 @@ async function applyEntitlementsForPaymentIntent(paymentIntentId) {
     if (!ent) continue;
     switch (ent) {
       case 'premium':
-        updates.has_premium = true;
-        updates.premium_since = new Date().toISOString();
-        granted.push('premium');
+        if (!current?.has_premium) {
+          updates.has_premium = true;
+          updates.premium_since = new Date().toISOString();
+          granted.push('premium');
+        }
         break;
       case 'pet_pack':
-        updates.pet_pack = true; granted.push('pet_pack'); break;
+        if (!current?.pet_pack) { updates.pet_pack = true; granted.push('pet_pack'); }
+        break;
       case 'win_bling_pack':
-        updates.win_bling_pack = true; granted.push('win_bling_pack'); break;
+        if (!current?.win_bling_pack) { updates.win_bling_pack = true; granted.push('win_bling_pack'); }
+        break;
       case 'more_goblins_pack':
-        updates.more_goblins_pack = true; granted.push('more_goblins_pack'); break;
+        if (!current?.more_goblins_pack) { updates.more_goblins_pack = true; granted.push('more_goblins_pack'); }
+        break;
     }
   }
   if (Object.keys(updates).length === 0) return;
@@ -287,5 +354,38 @@ async function applyEntitlementsForPaymentIntent(paymentIntentId) {
       entitlement: g,
       detail: { payment_intent_id: paymentIntentId }
     });
+  }
+}
+
+// Support entitlements when only a session exists (no intent yet) – rare edge case
+async function applyEntitlementsForSessionOnly(enrichedEvent, userId) {
+  const supa = getAdminSupabase();
+  if (!supa) return;
+  const priceIds = (enrichedEvent?.extracted_price_ids || []).filter(p => typeof p === 'string' && p.startsWith('price_'));
+  if (!priceIds.length) return;
+  await ensureUserEntitlementsRow(supa, userId);
+  let current = null;
+  try {
+    const { data: row } = await supa.from('user_entitlements').select('has_premium, pet_pack, win_bling_pack, more_goblins_pack').eq('user_id', userId).maybeSingle();
+    current = row || {};
+  } catch {}
+  const updates = {}; const granted = [];
+  for (const pid of priceIds) {
+    const ent = PRICE_TO_ENTITLEMENT[pid];
+    if (!ent) continue;
+    switch (ent) {
+      case 'premium': if (!current?.has_premium) { updates.has_premium = true; updates.premium_since = new Date().toISOString(); granted.push('premium'); } break;
+      case 'pet_pack': if (!current?.pet_pack) { updates.pet_pack = true; granted.push('pet_pack'); } break;
+      case 'win_bling_pack': if (!current?.win_bling_pack) { updates.win_bling_pack = true; granted.push('win_bling_pack'); } break;
+      case 'more_goblins_pack': if (!current?.more_goblins_pack) { updates.more_goblins_pack = true; granted.push('more_goblins_pack'); } break;
+    }
+  }
+  if (!Object.keys(updates).length) return;
+  updates.updated_at = new Date().toISOString();
+  const { error: upErr } = await supa.from('user_entitlements').update(updates).eq('user_id', userId);
+  if (upErr) { console.error('Session-only entitlement update failed:', upErr.message); return; }
+  const { data: paymentRow } = await supa.from('payments').select('id').eq('stripe_session_id', enrichedEvent?.data?.object?.id || '___none___').maybeSingle();
+  for (const g of granted) {
+    await supa.from('entitlement_events').insert({ user_id: userId, payment_id: paymentRow?.id || null, kind: 'grant', entitlement: g, detail: { session_only: true } });
   }
 }
