@@ -1,5 +1,6 @@
 import Line from './line.js';
 import {assets} from './assets.js'; // Import assets for goblin sprites
+import { playPop, playTap, clearTapState } from './audio.js';
 
 class Goblin {
 
@@ -44,9 +45,14 @@ class Goblin {
         this.walk_speed = 0.3; // Speed of the walking animation
         this.bounce_height = 3; // How high the goblin bounces
         this.tilt_angle = 5; // Maximum tilt angle in degrees
-    // Bling system
-    this.hasBling = false;       // whether to render a bling accessory (winner)
-    this.blingType = 'crown';    // which bling asset: crown|halo|chain|shades
+        // Footstep tap tracking
+        this._lastWalkPhase = 0; // remember last fractional cycle to detect foot plant crossings
+        // Bling system
+        this.hasBling = false;       // whether to render a bling accessory (winner)
+        this.blingType = 'crown';    // which bling asset: crown|halo|chain|shades
+
+        // Cosmetic companion (pet) selection key (networked). Null/undefined => no pet.
+        this.petKey = null;
 
         // Tool options
         this.eraserRadius = 15; // default eraser radius in pixels
@@ -77,17 +83,25 @@ class Goblin {
         this._spawnTime = 0;
         this._popStarted = true;
         this._popCompleted = false;
+        // Low-latency pop via Web Audio
+        try { playPop(); } catch {}
     }
 
     setSize() {
         switch (this.shape) {
+            case 'yogi':
+                this.size = 32;
+                break;
             case 'hippo':
             case 'grubby':
+            case 'sticky':
                 this.size = 35;
                 break;
             // These 4 are kinda big, so they have a smaller size
             case 'blimp':
             case 'stanley':
+            case 'bricky':
+            case 'reggie':
                 this.size = 40;
                 break;
             // Ricky we specifically want to be smaller, even though he is normal
@@ -133,10 +147,26 @@ class Goblin {
         }
         
         // Update walking animation cycle when moving
-        if (this.velocity.mag() > 1) { // Only animate when actually moving
+        const speedMag = this.velocity.mag();
+        if (speedMag > 1) { // Only animate when moving
             this.walk_cycle += this.walk_speed;
+            // Generate footstep taps aligned roughly to bounce crest/trough.
+            // We use sin(walk_cycle * 2) like bounce; fire tap near points where phase crosses multiples of PI (cycle*2 near integer PI).
+            const phase = (this.walk_cycle * 2) % (Math.PI*2); // 0..2PI domain of sine
+            const lastPhase = this._lastWalkPhase;
+            // Detect downward zero-crossing and its opposite (two taps per full sine wave)
+            const crossed = (lastPhase < Math.PI && phase >= Math.PI) || (lastPhase > phase && lastPhase > Math.PI); // handle wrap
+            if (crossed) {
+                // intensity scaled by velocity ratio
+                const intensity = Math.min(1, speedMag / this.max_speed);
+                try { playTap(this.id, intensity); } catch {}
+            }
+            this._lastWalkPhase = phase;
         } else {
-            this.walk_cycle = 0; // Reset cycle when not moving
+            // Not moving – reset cycle & tap state so next movement starts cleanly
+            this.walk_cycle = 0;
+            this._lastWalkPhase = 0;
+            clearTapState(this.id);
         }
 
         // TODO: Point the goblin's pen at the cursor instead

@@ -2,6 +2,7 @@
 // Provides: drawColoredPrompt(prompt, seconds, uiColorOverride?) and drawScoreboard(results, goblins, ui_color)
 // Also: drawHeader(text, ui_color) for generic headers and drawWaitingWithScoreboard
 import { spawnBurst } from './burst.js';
+import { playPop } from './audio.js';
 
 // Track which revealed tokens we've already celebrated to avoid duplicate bursts
 // Key format: `${text}|${occurrenceIndex}` (occurrence is Nth time this text appears)
@@ -77,6 +78,7 @@ export function drawHeader(maskedPrompt, seconds, uiColor, options = {}) {
                 const cx = tokenStartX + tokenWidth/2;
                 const cy = y; // baseline; visually centered enough for a small pop
                 spawnBurst(cx, cy, uiColor, { count: 7 });
+                try { playPop(); } catch {}
                 revealedSeen.add(key);
             }
         }
@@ -111,37 +113,56 @@ export function drawScoreboard(results, goblins, ui_color){
 
 export function drawWaitingWithScoreboard(timer, results, goblins, ui_color) {
     const sorted = [...results].sort((a,b)=> b.score - a.score);
-    const lineH = 44;
-    const titleSize = 48;
-    const entrySize = 34;
-    const gapBelowTitle = 24;
+    const lineH = 40;
+    const titleSize = 22;
+    const entrySize = 30;
+    const gapBelowTitle = 14;
     const num = sorted.length;
-    const totalHeight = titleSize + gapBelowTitle + (num * lineH);
-    const topY = Math.max(120, (height - totalHeight)/2); // Keep away from very top where timer goes
 
-    // Draw timer up near header line (similar to drawHeader y=50)
+    // Build line strings for measurement
+    const titleText = 'Scoreboard:';
+    // Measure widths: need to set textSize prior to each measurement
+    push();
+    textSize(titleSize);
+    let maxWidth = textWidth(titleText);
+    for (let i=0;i<sorted.length;i++) {
+        const r = sorted[i];
+        const artist = goblins.find(g=> g.id === r.userId);
+        const line = `${i+1}. ${artist ? artist.name : '???'}  -  ${r.score}`;
+        textSize(entrySize);
+        const w = textWidth(line);
+        if (w > maxWidth) maxWidth = w;
+    }
+    pop();
+
+    const totalHeight = titleSize + gapBelowTitle + (num * lineH);
+    const topPadding = 120;
+    const topY = Math.max(topPadding, (height - totalHeight)/2);
+    const blockX = width/2 - maxWidth/2; // centered block, left-aligned text
+
+    // Timer centered
     push();
     textAlign(CENTER, CENTER);
-    textSize(24);
+    textSize(22);
     fill(ui_color[0], ui_color[1], ui_color[2]);
     text(`Starting in ${int(timer)}s`, width/2, 50);
     pop();
 
-    // Draw centered scoreboard
+    // Draw scoreboard block
     push();
-    textAlign(CENTER, TOP);
-    textSize(titleSize); textStyle(BOLD);
+    textAlign(LEFT, TOP);
     fill(ui_color[0], ui_color[1], ui_color[2]);
-    text('Scoreboard', width/2, topY);
+    textSize(titleSize); textStyle(BOLD);
+    text(titleText, blockX, topY);
     textStyle(NORMAL);
     let yStart = topY + titleSize + gapBelowTitle;
-    let rank=1;
-    for (const r of sorted){
+    let rank = 1;
+    for (const r of sorted) {
         const artist = goblins.find(g=> g.id === r.userId);
         if (!artist) continue;
-        fill(artist.color[0], artist.color[1], artist.color[2]);
         textSize(entrySize);
-        text(`${rank}. ${artist.name}  -  ${r.score}`, width/2, yStart + (rank-1)*lineH);
+        fill(artist.ui_color?.[0] ?? artist.color[0], artist.ui_color?.[1] ?? artist.color[1], artist.ui_color?.[2] ?? artist.color[2]);
+        text(`${rank}. ${artist.name}  -  ${r.score}`, blockX, yStart + (rank-1)*lineH);
         rank++;
     }
     pop();

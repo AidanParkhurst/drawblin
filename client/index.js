@@ -10,11 +10,13 @@ import { drawHeader, drawWaitingWithScoreboard } from './header.js';
 import { ws, connect, sendMessage } from "./network.js";
 import { mountHouseControls, updateHouseControlsVisibility, onHouseModeSelected, setHouseMode } from './house_controls.js';
 import { assets } from "./assets.js";
+import { playThud, playDragGrain, stopDragImmediate } from './audio.js';
 import { calculateUIColor, randomPaletteColor } from "./colors.js";
 import { ready as authReady, isAuthConfigured, getUser, getProfileName, upsertProfileName } from './auth.js';
 import { generateGoblinName } from './names.js';
 import { spawnBurst, updateBursts } from './burst.js';
 import Pet from './pets.js';
+import { fetchEntitlements, hasPetPack, hasPremium } from './entitlements.js';
 
 // -- Game State Initialization --
 let you;
@@ -30,16 +32,23 @@ let game_state = 'lobby';
 // Gamemode dependent variables
 let prompt = "";
 let prompt_length = -1; // legacy single-word length (still used for quickdraw underscore fallback)
-let last_winner = -1; // id of last winner 
+// QuickDraw winner tracking (now supports ties & persistence through next full round)
+let last_winners = new Set(); // ids of winners from most recent finished state
 let timer = 0;
 let current_artist = -1; // id of the artist who drew the art being voted on
 let results = [];
+// Persistent winner sets per mode (QuickDraw & Guessing Game)
+let quickdrawWinners = new Set();
+let guessingWinners = new Set();
+let quickdrawPrimaryWinner = null; // single winner whose drawing persists (even if tie)
 // UI overlay queue to ensure overlays render above world
 let _pendingHeader = null; // { text, time, color, options }
 let _pendingScoreboard = null; // { time, results, goblinsRef, color }
 
 // drawing vars
 let drawing = false;
+let dragAccumDist = 0; // accumulate distance since last drag grain
+let lastDragX = null, lastDragY = null;
 let last_mouse = { x: 0, y: 0 };
 let line_granularity = 5; // How many pixels between each line point
 let last_line_count = 0;
@@ -128,11 +137,15 @@ async function start() {
     ); // Create the local goblin
     try { you.triggerAppear?.(); } catch {}
 
-    // For testing: give the local player a default pet
+    // Pet entitlement gating: only signed-in users with pet pack or premium get a pet (selected later via profile UI)
     try {
-        const starterPet = new Pet(you, 'empty_hand');
-        pets.push(starterPet);
-    } catch {}
+        await fetchEntitlements();
+        if (hasPetPack() || hasPremium()) {
+            // We'll spawn an empty placeholder; actual sprite chosen when user picks in profile UI.
+            // Keep petKey null until selection to avoid random assignment.
+            // (If we later persist selection server-side, initialize here.)
+        }
+    } catch (e) { console.warn('Pet entitlement check failed:', e?.message || e); }
 
     // Calculate UI color based on contrast against background (240, 240, 240)
     you.ui_color = calculateUIColor(you.color, [240, 240, 240]);
@@ -415,6 +428,21 @@ window.draw = () => {
             // Regular brush/drawing logic
             var l = new Line(createVector(last_mouse.x, last_mouse.y), createVector(you.cursor.x, you.cursor.y), you.color, 5);
             you.lines.push(l); // Store the line in the goblin's lines array
+            // Grain-based drag SFX using segment distance
+            if (lastDragX == null) { lastDragX = last_mouse.x; lastDragY = last_mouse.y; }
+            const segDx = you.cursor.x - lastDragX;
+            const segDy = you.cursor.y - lastDragY;
+            const segDist = Math.sqrt(segDx*segDx + segDy*segDy);
+            dragAccumDist += segDist;
+            lastDragX = you.cursor.x; lastDragY = you.cursor.y;
+            // Trigger small grain every ~32px of cumulative stroke distance
+            const threshold = 32;
+            if (dragAccumDist >= threshold) {
+                // Scale intensity with how much over threshold (cap 2x)
+                const factor = Math.min(1, (dragAccumDist / threshold));
+                playDragGrain(factor);
+                dragAccumDist = 0; // reset accumulator
+            }
         }
     }
 
@@ -424,9 +452,23 @@ window.draw = () => {
     heartbeat_timer += deltaTime;
     if (heartbeat_timer >= heartbeat && ws && ws.readyState === WebSocket.OPEN) {
         // Send the updated goblin state to the server
+        // Shallow clone to avoid sending large circular references; include lines & petKey explicitly
+        const outbound = { 
+            id: you.id,
+            x: you.x,
+            y: you.y,
+            cursor: you.cursor,
+            lines: you.lines,
+            color: you.color,
+            name: you.name,
+            shape: you.shape,
+            ui_color: you.ui_color,
+            tool: you.tool,
+            petKey: you.petKey || null
+        };
         sendMessage({
             type: "update",
-            goblin: you
+            goblin: outbound
         });
         heartbeat_timer = 0;
     }
@@ -444,40 +486,60 @@ function quickdraw_update(delta) {
 
     let headerText = '';
     if (game_state === 'waiting') {
-        // Clear crowns (winner crown only shown during finished state)
-        for (let goblin of goblins) goblin.update(delta, true, true);
-    headerText = `Waiting for players...`;
+        // Maintain previous winners' bling during the whole next round
+        for (let goblin of goblins) {
+            goblin.hasBling = quickdrawWinners.has(goblin.id);
+            goblin.update(delta, true, true);
+        }
+        headerText = `Waiting for players...`;
     } else if (game_state === 'drawing') {
-    for (let g of goblins) { g.hasBling = false; }
+        for (let g of goblins) {
+            // Keep bling if they are previous winners
+            g.hasBling = quickdrawWinners.has(g.id);
+        }
         you.update(delta);
-    headerText = `Draw [${prompt}]`;
+        headerText = `Draw [${prompt}]`;
     } else if (game_state === 'pre-voting') {
-        for (let goblin of goblins) goblin.update(delta, false);
-    headerText = `Time's up! Get ready to vote.`;
+        for (let goblin of goblins) {
+            goblin.hasBling = quickdrawWinners.has(goblin.id);
+            goblin.update(delta, false);
+        }
+        headerText = `Time's up! Get ready to vote.`;
     } else if (game_state === 'voting') {
         for (let goblin of goblins) {
+            goblin.hasBling = quickdrawWinners.has(goblin.id);
             if (goblin.id === current_artist) goblin.update(delta); else goblin.update(delta, false);
         }
-    headerText = `Rate this drawing 1-5`;
+        headerText = `Rate this drawing 1-5`;
     } else if (game_state === 'finished') {
-        last_winner = (goblins.find(g => g.id === results[0]?.artistId))?.id || -1;
-        let winnerName = '';
+        // Determine winners (tie-aware) using highest averageVote
+        let winners = [];
+        if (Array.isArray(results) && results.length) {
+            const maxAvg = results.reduce((m,r)=> r.averageVote>m? r.averageVote : m, -Infinity);
+            winners = results.filter(r => r.averageVote === maxAvg && maxAvg >= 0).map(r => r.artistId);
+        }
+        quickdrawWinners = new Set(winners); // persist through entire next round
+        last_winners = new Set(winners);
+        // Deterministically pick primary winner whose drawing will persist into next round
+        quickdrawPrimaryWinner = winners.length ? winners[0] : null;
+        let names = [];
         for (let goblin of goblins) {
-            if (last_winner !== -1 && goblin.id === last_winner) {
-                goblin.update(delta, true, true);
+            if (quickdrawWinners.has(goblin.id)) {
                 goblin.hasBling = true;
-                // Use existing preference if set; otherwise assign one time
                 if (!goblin.blingType) {
                     const pool = ['crown','halo','chain','shades'];
                     goblin.blingType = pool[Math.floor(Math.random()*pool.length)];
                 }
-                winnerName = goblin.name;
+                names.push(goblin.name);
+                goblin.update(delta, true, true);
             } else {
-                goblin.update(delta, false, true);
                 goblin.hasBling = false;
+                goblin.update(delta, false, true);
             }
         }
-        headerText = last_winner !== -1 ? `Winner: ${winnerName}!` : 'No winner';
+        if (names.length === 0) headerText = 'No winner';
+        else if (names.length === 1) headerText = `Winner: ${names[0]}!`;
+        else headerText = `Winners: ${names.join(', ')}`;
     }
     if (headerText) _pendingHeader = { text: headerText, time: int(timer), color: you.ui_color, options: { revealBursts: (lobby_type === 'guessinggame') } };
 }
@@ -487,15 +549,15 @@ function guessinggame_update(delta) {
     timer = Math.max(0, timer); // Ensure timer doesn't go negative
     var header = "";
     if (game_state === 'waiting') { // See all players, all lines, countdown
-        // Update everyone and compute crowns for top scorer
-        let top = null;
+        // Compute tie-aware leaders (all highest scores)
+        let leaders = [];
         if (results && results.length) {
-            for (const r of results) {
-                if (!top || r.score > top.score || (r.score === top.score && r.userId < top.userId)) top = r;
-            }
+            const maxScore = results.reduce((m,r)=> r.score>m? r.score : m, -Infinity);
+            leaders = results.filter(r => r.score === maxScore && maxScore >= 0).map(r => r.userId);
         }
+        guessingWinners = new Set(leaders);
         for (let goblin of goblins) {
-            if (top && goblin.id === top.userId) {
+            if (guessingWinners.has(goblin.id)) {
                 goblin.hasBling = true;
                 if (!goblin.blingType) {
                     const pool = ['crown','halo','chain','shades'];
@@ -514,12 +576,8 @@ function guessinggame_update(delta) {
     }
     else if (game_state === 'drawing') { // See current artist's lines, header with underscores of the prompt length, and timer
         for (let goblin of goblins) {
-            if (goblin.id === current_artist) {
-                goblin.update(delta);
-            } else {
-                goblin.update(delta, false);
-            }
-            goblin.hasBling = false; // no bling during drawing
+            goblin.hasBling = guessingWinners.has(goblin.id);
+            if (goblin.id === current_artist) goblin.update(delta); else goblin.update(delta, false);
         }
         if (you.id === current_artist) {
             header = `Draw a ${prompt}`;
@@ -529,12 +587,8 @@ function guessinggame_update(delta) {
     }
     else if (game_state === 'reveal') { // See all players, current artist's lines, and a header with the prompt
         for (let goblin of goblins) {
-            if (goblin.id === current_artist) {
-                goblin.update(delta, true);
-            } else {
-                goblin.update(delta, false);
-            }
-            goblin.hasBling = false; // bling reserved for waiting scoreboard in guessing game
+            goblin.hasBling = guessingWinners.has(goblin.id);
+            if (goblin.id === current_artist) goblin.update(delta, true); else goblin.update(delta, false);
         }
     // Server sends fully bracketed phrase on reveal; display colored without timer
         header = "It was a " + prompt;
@@ -570,6 +624,8 @@ window.mousePressed = () => {
     drawing = true;
     last_mouse = createVector(you.cursor.x, you.cursor.y);
     last_line_count = you.lines.length; // Store the initial line count
+    // Thud on initial press (low latency)
+    try { playThud(); } catch {}
 }
 
 window.mouseReleased = () => {
@@ -582,6 +638,11 @@ window.mouseReleased = () => {
         spawnBurst(you.cursor.x, you.cursor.y, you.color, { count: 6 });
     }
     drawing = false;
+    // Stop drag sound (fade out quickly by pausing)
+    // Reset drag accum tracking & cut residual drag audio
+    dragAccumDist = 0; lastDragX = lastDragY = null; stopDragImmediate();
+    // Thud on release
+    try { playThud(); } catch {}
     // add a dot line to the goblin's lines
 }
 
@@ -708,6 +769,10 @@ function onmessage(event) {
                 const newcomer = new Goblin(data.goblin.x, data.goblin.y, color, false, data.goblin.id, data.goblin.shape, data.goblin.name || '');
                 try { newcomer.triggerAppear?.(); } catch {}
                 goblins.push(newcomer);
+                // Attach pet if provided and valid
+                if (data.goblin.petKey && typeof data.goblin.petKey === 'string') {
+                    try { const p = new Pet(newcomer, data.goblin.petKey); pets.push(p); newcomer.petKey = data.goblin.petKey; } catch {}
+                }
                 return;
             }
             if (goblin) {
@@ -725,6 +790,26 @@ function onmessage(event) {
                 goblin.name = data.goblin.name || goblin.name || '';
                 goblin.shape = data.goblin.shape || goblin.shape || 'manny';
                 goblin.setSize();
+                // Handle pet changes (create/update/remove)
+                const incomingPet = data.goblin.petKey || null;
+                if (incomingPet && typeof incomingPet === 'string') {
+                    if (!goblin.petKey || goblin.petKey !== incomingPet) {
+                        // Replace or create
+                        let existingPet = pets.find(p => p.owner === goblin);
+                        if (!existingPet) {
+                            try { existingPet = new Pet(goblin, incomingPet); pets.push(existingPet); } catch {}
+                        } else {
+                            existingPet.spriteKey = incomingPet;
+                            if (typeof existingPet.setSize === 'function') existingPet.setSize();
+                        }
+                        goblin.petKey = incomingPet;
+                    }
+                } else if (!incomingPet && goblin.petKey) {
+                    // Remove existing pet if entitlement revoked or cleared
+                    const idx = pets.findIndex(p => p.owner === goblin);
+                    if (idx !== -1) pets.splice(idx, 1);
+                    goblin.petKey = null;
+                }
                 if (goblin.lines.length !== data.goblin.lines.length) {
                     goblin.lines = [];
                     for (let i = 0; i < data.goblin.lines.length; i++) {
@@ -753,13 +838,21 @@ function onmessage(event) {
             const prev_state = game_state;
             if (lobby_type === 'quickdraw') {
                 if (data.state === 'waiting') {
-                    if (game_state === 'finished' && last_winner !== -1) { // game restarted, clear all drawings except for the winner
-                        for (let goblin of goblins) {
-                            if (goblin.id !== last_winner) {
-                                goblin.lines = []; // Clear lines for all except the winner
+                            if (game_state === 'finished' && last_winners.size > 0) { // game restarted
+                                if (lobby_type === 'quickdraw') {
+                                    // Keep only primary winner's drawing (avoid overlapping multiple winning drawings)
+                                    for (let goblin of goblins) {
+                                        if (quickdrawPrimaryWinner == null || goblin.id !== quickdrawPrimaryWinner) {
+                                            goblin.lines = [];
+                                        }
+                                    }
+                                } else {
+                                    // Other modes may keep all winners (currently none use this branch)
+                                    for (let goblin of goblins) {
+                                        if (!last_winners.has(goblin.id)) goblin.lines = [];
+                                    }
+                                }
                             }
-                        }
-                    }
                     timer = data.time;
 
                 } else if (data.state === 'drawing') {

@@ -1,6 +1,6 @@
 import { you, goblins, pets } from './index.js';
 import Pet from './pets.js';
-import { fetchEntitlements, hasPremium, hasPetPack, hasBlingPack } from './entitlements.js';
+import { fetchEntitlements, hasPremium, hasPetPack, hasBlingPack, hasMoreGoblinsPack } from './entitlements.js';
 import { assets } from './assets.js';
 import { sendMessage } from './network.js';
 import { calculateUIColor, palette } from './colors.js'; 
@@ -27,8 +27,10 @@ class ProfileDisplay {
         
         this.hoveredColor = -1;
 
-        // Shapes available for selection
-        this.shapes = ['manny','stanley','ricky','blimp','hippo','grubby'];
+    // Shape pools (extra ones gated by entitlement)
+    this.baseShapes = ['manny','stanley','ricky','blimp','hippo','grubby'];
+    this.extraShapes = ['bricky','reggie','sticky','yogi'];
+    this.shapes = [...this.baseShapes];
         this.leftArrowHover = false;
         this.rightArrowHover = false;
         this.prevMousePressed = false; // for click debouncing
@@ -54,8 +56,9 @@ class ProfileDisplay {
         // Entitlement flags (resolved async); default false until loaded
         this._entitlementsLoaded = false;
         this._canShowPet = false;
-        this._canShowBling = false;
-        this._loadingEntitlements = false;
+    this._canShowBling = false;
+    this._loadingEntitlements = false;
+    this._canShowExtraGoblins = false;
     }
     
     show(goblinId, playerX, playerY) {
@@ -422,8 +425,11 @@ class ProfileDisplay {
                 existingPet.spriteKey = chosenKey;
                 if (typeof existingPet.setSize === 'function') existingPet.setSize();
             }
+            you.petKey = chosenKey;
+            // Immediately sync to server so others see pet (match outbound shaping in heartbeat)
+            const outbound = { id: you.id, x: you.x, y: you.y, cursor: you.cursor, lines: you.lines, color: you.color, name: you.name, shape: you.shape, ui_color: you.ui_color, tool: you.tool, petKey: you.petKey };
+            sendMessage({ type: 'update', goblin: outbound });
         } catch (_) { /* ignore */ }
-        // (Future: send to server / persist)
     }
     cycleBling(dir) {
         if (this.targetGoblin !== you) return;
@@ -441,9 +447,21 @@ class ProfileDisplay {
             await fetchEntitlements();
             this._canShowPet = hasPetPack();
             this._canShowBling = hasBlingPack();
+            this._canShowExtraGoblins = hasMoreGoblinsPack();
             if (hasPremium()) { // premium unlocks all
                 this._canShowPet = true;
                 this._canShowBling = true;
+                this._canShowExtraGoblins = true;
+            }
+            // Rebuild shape rotation list
+            const currentShape = you.shape;
+            this.shapes = [...this.baseShapes];
+            if (this._canShowExtraGoblins) this.shapes.push(...this.extraShapes);
+            // If user was on an extra shape but lost entitlement, fallback to first base
+            if (!this.shapes.includes(currentShape)) {
+                you.shape = this.baseShapes[0];
+                you.setSize?.();
+                try { sendMessage({ type: 'update', goblin: you }); } catch {}
             }
             this._entitlementsLoaded = true;
         } catch (e) {
@@ -455,23 +473,21 @@ class ProfileDisplay {
 
     cycleShape(direction) {
         if (this.targetGoblin !== you) return; // Only local player can change their shape
+        // Ensure shape list reflects current entitlements (in case they loaded mid-session)
+        if (this._entitlementsLoaded) {
+            const desiredExtra = (hasPremium() || hasMoreGoblinsPack());
+            const shouldHaveExtras = this.shapes.some(s => this.extraShapes.includes(s));
+            if (desiredExtra && !shouldHaveExtras) {
+                this.shapes = [...this.baseShapes, ...this.extraShapes];
+            } else if (!desiredExtra && shouldHaveExtras) {
+                this.shapes = [...this.baseShapes];
+            }
+        }
         const currentIndex = this.shapes.indexOf(this.targetGoblin.shape);
         const nextIndex = (currentIndex + direction + this.shapes.length) % this.shapes.length;
         this.targetGoblin.shape = this.shapes[nextIndex];
-        // Recalculate size like Goblin constructor switch
-        switch (this.targetGoblin.shape) {
-            case 'hippo':
-                this.targetGoblin.size = 35; break;
-            case 'blimp':
-            case 'stanley':
-            case 'grubby':
-                this.targetGoblin.size = 40; break;
-            case 'ricky':
-                this.targetGoblin.size = 45; break;
-            case 'manny':
-            default:
-                this.targetGoblin.size = 50; break;
-        }
+        // Use goblin instance method for sizing consistency
+        if (typeof this.targetGoblin.setSize === 'function') this.targetGoblin.setSize();
         sendMessage({ type: 'update', goblin: this.targetGoblin });
     }
 }

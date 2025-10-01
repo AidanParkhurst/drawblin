@@ -1,3 +1,8 @@
+// Local promo cover images (stored under assets/promo)
+import critterCover from './assets/promo/critter_cover.png';
+import blingCover from './assets/promo/bling_cover.png';
+import goblinCover from './assets/promo/goblin_cover.png';
+
 const DEALS = {
   premium: {
     key: 'premium',
@@ -13,31 +18,25 @@ const DEALS = {
     key: 'critter',
     title: 'The Critter Pet Pack',
     desc: 'Adorable companions that follow your goblin around. Includes multiple species and colors.',
-    images: [
-      'https://placehold.co/800x600/FFF/AAA?text=Critter+1',
-      'https://placehold.co/800x600/FFF/AAE?text=Critter+2',
-      'https://placehold.co/800x600/FFF/AFA?text=Critter+3'
-    ]
+    cover: critterCover,
+    images: [critterCover],
+    price: { dollars: 2, cents: '99' }
   },
   bling: {
     key: 'bling',
     title: 'The Winner Bling Bundle',
     desc: 'Crowns, sparkles, and shiny bits to flex your style. Winner or not, you will look the part.',
-    images: [
-      'https://placehold.co/800x600/FFF/DAA?text=Bling+1',
-      'https://placehold.co/800x600/FFF/ADA?text=Bling+2',
-      'https://placehold.co/800x600/FFF/AAD?text=Bling+3'
-    ]
+    cover: blingCover,
+    images: [blingCover],
+    price: { dollars: 1, cents: '99' }
   },
   poppin: {
     key: 'poppin',
     title: 'The Poppin Goblin Pack',
     desc: 'Extra animations and pops for your goblin. Bring the party wherever you go.',
-    images: [
-      'https://placehold.co/800x600/FFF/8AD?text=Poppin+1',
-      'https://placehold.co/800x600/FFF/8DA?text=Poppin+2',
-      'https://placehold.co/800x600/FFF/D8A?text=Poppin+3'
-    ]
+    cover: goblinCover,
+    images: [goblinCover],
+    price: { dollars: 4, cents: '99' }
   }
 };
 
@@ -133,6 +132,27 @@ function hookGrid() {
   if (!grid) return;
   qsa('.shop-card', grid).forEach(card => {
     const key = card.getAttribute('data-key');
+    // Inject front cover image if available and media container present
+    const deal = DEALS[key];
+    if (deal?.cover) {
+      const media = card.querySelector('.shop-card__media');
+      if (media && !media.querySelector('img')) {
+        media.textContent = '';
+        const img = document.createElement('img');
+        img.src = deal.cover;
+        img.alt = deal.title + ' cover';
+        media.appendChild(img);
+        media.classList.remove('placeholder');
+      }
+    }
+    // Inject price (bottom-right) if present
+    if (deal?.price && !card.querySelector('.shop-card__price')) {
+      const p = document.createElement('div');
+      p.className = 'shop-card__price';
+      p.setAttribute('aria-label', `Price $${deal.price.dollars}.${deal.price.cents}`);
+      p.innerHTML = `<span class="price-symbol">$</span><span class="price-dollars">${deal.price.dollars}</span><span class="price-decimal">.</span><span class="price-cents">${deal.price.cents}</span>`;
+      card.appendChild(p);
+    }
     card.addEventListener('click', () => {
       const deal = DEALS[key];
       if (deal) openModal(deal);

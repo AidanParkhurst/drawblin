@@ -15,7 +15,7 @@ export async function fetchEntitlements(force = false) {
   const client = getClient();
   if (!client) return null;
   _pending = client.from('user_entitlements')
-    .select('has_premium, pet_pack, win_bling_pack, more_goblins_pack')
+  .select('has_premium, pet_pack, win_bling_pack, more_goblins_pack')
     .eq('user_id', user.id)
     .maybeSingle()
     .then(({ data, error }) => {
@@ -37,5 +37,6 @@ if (typeof window !== 'undefined') {
 export function hasPremium() { return Boolean(_cache?.has_premium); }
 export function hasPetPack() { return Boolean(_cache?.pet_pack || _cache?.has_premium); }
 export function hasBlingPack() { return Boolean(_cache?.win_bling_pack || _cache?.has_premium); }
+export function hasMoreGoblinsPack() { return Boolean(_cache?.more_goblins_pack || _cache?.has_premium); }
 
-export default { fetchEntitlements, entitlementCache, hasPremium, hasPetPack, hasBlingPack };
+export default { fetchEntitlements, entitlementCache, hasPremium, hasPetPack, hasBlingPack, hasMoreGoblinsPack };

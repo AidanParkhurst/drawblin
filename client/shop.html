@@ -15,7 +15,6 @@
     /* Fallback if CSS fails to load */
     .noscript { font-family: 'Neucha'; color: rgba(30,30,30,0.8); padding: 16px; }
   </style>
-  <link rel="icon" href="data:," />
   <meta name="description" content="Customize your goblin in the Drawblins shop" />
 </head>
 <body class="shop-body">
@@ -37,7 +36,7 @@
   <main class="shop-main">
     <header class="shop-header">
       <h1>Customize your goblin!</h1>
-      <p class="shop-sub">Pick a pack to make your goblin pop.</p>
+      <p class="shop-sub">Drawblins is free to play and ad-free, so your small cosmetic purchases keep the game alive! I'm deeply grateful for your support.</p>
     </header>
 
     <div class="back-link">
@@ -50,25 +49,26 @@
         <div class="shop-card__media shop-card__media--icon" aria-hidden="true">⭐</div>
         <div class="shop-card__content">
           <h3 class="shop-card__title">Premium Membership</h3>
-          <p class="shop-card__desc">Access all bundles this month for one simple recurring fee.</p>
-          <p class="shop-card__fineprint">Includes Companion Critter Collection, Big Win Bling Bundle, Poppin Goblin Pack, and new drops while active.</p>
+          <p class="shop-card__desc">Monthly access to all bundles, for one recurring fee.</p>
+          <p class="shop-card__fineprint">Includes all bundles and new
+            drops while active.</p>
         </div>
       </article>
       <!-- Cards populated by shop.js (with fallback static HTML below) -->
+      <article class="shop-card" data-key="bling" tabindex="0">
+        <div class="shop-card__media placeholder" aria-hidden="true">👑</div>
+        <h3 class="shop-card__title">The Big Win Bling Bundle</h3>
+        <p class="shop-card__desc">Shades, cups, and shiny stuff to flex your dubs.</p>
+      </article>
       <article class="shop-card" data-key="critter" tabindex="0">
         <div class="shop-card__media placeholder" aria-hidden="true">🐾</div>
         <h3 class="shop-card__title">The Companion Critter Collection</h3>
         <p class="shop-card__desc">Adorable pets to keep your goblin company.</p>
       </article>
-      <article class="shop-card" data-key="bling" tabindex="0">
-        <div class="shop-card__media placeholder" aria-hidden="true">👑</div>
-        <h3 class="shop-card__title">The Big Win Bling Bundle</h3>
-        <p class="shop-card__desc">Halos, wings, and shiny things to flex your dubs.</p>
-      </article>
       <article class="shop-card" data-key="poppin" tabindex="0">
         <div class="shop-card__media placeholder" aria-hidden="true">💥</div>
         <h3 class="shop-card__title">More Goblins</h3>
-        <p class="shop-card__desc">Expand your goblin collection with more unique characters.</p>
+        <p class="shop-card__desc">Expand your goblin options!</p>
       </article>
     </section>
   </main>
