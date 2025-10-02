@@ -25,6 +25,8 @@ import crownImg from './assets/bling/crown.png';
 import chainImg from './assets/bling/chain.png';
 import haloImg from './assets/bling/halo.png';
 import shadesImg from './assets/bling/shades.png';
+import beltImg from './assets/bling/belt.png';
+import trophyImg from './assets/bling/trophy.png';
 
 import neuchaFont from './assets/Neucha-Regular.ttf';
 // Sound effects (added sfx folder)
@@ -45,6 +47,8 @@ class Assets {
             "chain": chainImg,
             "halo": haloImg,
             "shades": shadesImg,
+            "belt": beltImg,
+            "trophy": trophyImg,
             "manny": mannyImg,
             "stanley": stanleyImg,
             "ricky": rickyImg,

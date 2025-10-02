@@ -12,7 +12,6 @@ let _inited = false;
 function getConfig() {
   const url = import.meta.env?.VITE_SUPABASE_URL;
   const anon = import.meta.env?.VITE_SUPABASE_ANON_KEY;
-  console.log("Supabase Config:", { url, anon });
   if (!url || !anon) return null;
   return { url, anon };
 }

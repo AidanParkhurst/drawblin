@@ -1,5 +1,6 @@
 import Line from './line.js';
 import {assets} from './assets.js'; // Import assets for goblin sprites
+import { resolveBlingLayout, installBlingDebugOnce, computeBlingWidth } from './bling_config.js';
 import { playPop, playTap, clearTapState } from './audio.js';
 
 class Goblin {
@@ -50,6 +51,7 @@ class Goblin {
         // Bling system
         this.hasBling = false;       // whether to render a bling accessory (winner)
         this.blingType = 'crown';    // which bling asset: crown|halo|chain|shades
+        installBlingDebugOnce();
 
         // Cosmetic companion (pet) selection key (networked). Null/undefined => no pet.
         this.petKey = null;
@@ -90,17 +92,17 @@ class Goblin {
     setSize() {
         switch (this.shape) {
             case 'yogi':
-                this.size = 32;
+                this.size = 30;
                 break;
             case 'hippo':
             case 'grubby':
             case 'sticky':
+            case 'bricky':
                 this.size = 35;
                 break;
             // These 4 are kinda big, so they have a smaller size
             case 'blimp':
             case 'stanley':
-            case 'bricky':
             case 'reggie':
                 this.size = 40;
                 break;
@@ -318,52 +320,57 @@ class Goblin {
         pop();
     }
 
-    // Render winner bling (crown|halo floating; shades|chain fixed with custom offsets)
+    // Render winner bling using anchor/spec system
     display_bling() {
         const sprite = assets?.sprites?.[this.blingType];
         if (!sprite) return;
-        let bodyHeight = this.size * (assets.sprites[this.shape].height / assets.sprites[this.shape].width);
+        const layout = resolveBlingLayout(this.shape, this.blingType);
+        if (!layout) return;
+        const { anchor, spec } = layout;
+        const bodySprite = assets.sprites[this.shape];
+        if (!bodySprite) return;
+        const bodyHeight = this.size * (bodySprite.height / bodySprite.width);
+        const bodyWidth = this.size; // width we render body at
+
+    // Convert anchor (normalized) to pixel offsets in unflipped (facing right) space
+    let baseX = anchor.x * bodyWidth;
+    let baseY = anchor.y * bodyHeight;
+    if (spec.dx) baseX += spec.dx * bodyWidth;
+    if (spec.dy) baseY += spec.dy * bodyHeight;
+
+    let targetWidth = Math.max(4, computeBlingWidth(this.shape, this.blingType, (spec.width || 0.5), this.size));
+        const ratio = sprite.height / sprite.width;
+        let targetHeight = targetWidth * ratio;
+
+        // Floating / bobbing motion
+        if (spec.bob) {
+            const bobAmp = spec.ring ? 6 : 5;
+            const bob = Math.sin((frameCount * 0.035) + (this.id % 997)) * bobAmp;
+            baseY += bob;
+        }
+
         push();
         imageMode(CENTER);
         noTint();
+        // Apply horizontal flip transform so offsets/anchors mirror perfectly.
+        // For ring-like halo we keep it centered (ignore X anchor to avoid lateral drift).
+    // Parent display() already applied scale(-1,1) when this.flip is true, so baseX is auto-mirrored.
+    // DO NOT negate here or offsets double-flip. Only center ring types.
+            const drawX = baseX; 
+    const drawY = baseY;
+        image(sprite, drawX, drawY, targetWidth, targetHeight);
 
-        // Common width heuristics
-        let targetWidth;
-        let xOffset = 0;
-        let yOffset = 0;
-        let floating = false;
-        switch (this.blingType) {
-            case 'crown':
-                floating = true;
-                targetWidth = this.size * 0.5;
-                yOffset = -(bodyHeight/2 + 10);
-                break;
-            case 'halo':
-                floating = true;
-                targetWidth = this.size * 0.65;
-                yOffset = -(bodyHeight/2 + 18);
-                break;
-            case 'shades':
-                targetWidth = this.size * 0.75;
-                // Slight forward (if flipped) adjust; keep centered
-                yOffset = -bodyHeight * 0.05;
-                break;
-            case 'chain':
-                targetWidth = this.size * 0.9;
-                yOffset = bodyHeight * 0.15; // hangs on chest
-                break;
-            default:
-                targetWidth = this.size * 0.5;
+        // Debug overlay
+        if (window.__blingDebug) {
+            push();
+            stroke(255, 0, 0, 160); strokeWeight(2); noFill();
+            line(drawX - 6, drawY, drawX + 6, drawY);
+            line(drawX, drawY - 6, drawX, drawY + 6);
+            stroke(0,200,255,160);
+            rectMode(CENTER);
+            rect(drawX, drawY, targetWidth, targetHeight);
+            pop();
         }
-        const ratio = sprite.height / sprite.width;
-        const targetHeight = targetWidth * ratio;
-
-        // Bobbing for floating types
-        if (floating) {
-            const bob = Math.sin((frameCount * 0.03) + (this.id % 997)) * 5; // reuse style from crown
-            yOffset += bob;
-        }
-        image(sprite, xOffset, yOffset, targetWidth, targetHeight);
         pop();
     }
 

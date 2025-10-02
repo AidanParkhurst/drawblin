@@ -1,6 +1,6 @@
 import { you, goblins, pets } from './index.js';
 import Pet from './pets.js';
-import { fetchEntitlements, hasPremium, hasPetPack, hasBlingPack, hasMoreGoblinsPack } from './entitlements.js';
+import { fetchEntitlements, hasPremium, hasPetPack, hasBlingPack, hasMoreGoblinsPack, entitlementCache } from './entitlements.js';
 import { assets } from './assets.js';
 import { sendMessage } from './network.js';
 import { calculateUIColor, palette } from './colors.js'; 
@@ -40,7 +40,7 @@ class ProfileDisplay {
 
         // Pet & Bling picker state
         this.petKeys = ['pet_bunny','pet_butterfly','pet_croc','pet_mole','pet_puffle'];
-        this.blingKeys = ['crown','halo','chain','shades'];
+    this.blingKeys = ['crown','halo','chain','shades','belt','trophy'];
         this.petIndex = 0;
         this.blingIndex = 0;
         this.petLeftHover = false; this.petRightHover = false;
@@ -59,6 +59,15 @@ class ProfileDisplay {
     this._canShowBling = false;
     this._loadingEntitlements = false;
     this._canShowExtraGoblins = false;
+        // If auth session refreshes (Supabase can emit auth:user-changed even for same user on tab refocus)
+        // our entitlement cache is cleared by entitlements.js. That would leave _entitlementsLoaded=true
+        // but _cache=null, causing cycleShape() logic to think extras are no longer allowed and prune them.
+        // Listen for auth changes and force a re-fetch next time panel is used.
+        if (typeof window !== 'undefined') {
+            window.addEventListener('auth:user-changed', () => {
+                this._entitlementsLoaded = false;
+            });
+        }
     }
     
     show(goblinId, playerX, playerY) {
@@ -473,13 +482,18 @@ class ProfileDisplay {
 
     cycleShape(direction) {
         if (this.targetGoblin !== you) return; // Only local player can change their shape
-        // Ensure shape list reflects current entitlements (in case they loaded mid-session)
+        // If entitlement cache was cleared after initial load (e.g., auth refresh), trigger a refresh.
+        if (this._entitlementsLoaded && !entitlementCache()) {
+            this._entitlementsLoaded = false; // allow ensure to run again
+            this._ensureEntitlements(); // async; shapes list will rebuild when done
+        }
+        // Ensure shape list reflects current (possibly refreshed) entitlements
         if (this._entitlementsLoaded) {
             const desiredExtra = (hasPremium() || hasMoreGoblinsPack());
-            const shouldHaveExtras = this.shapes.some(s => this.extraShapes.includes(s));
-            if (desiredExtra && !shouldHaveExtras) {
+            const hasExtrasInList = this.shapes.some(s => this.extraShapes.includes(s));
+            if (desiredExtra && !hasExtrasInList) {
                 this.shapes = [...this.baseShapes, ...this.extraShapes];
-            } else if (!desiredExtra && shouldHaveExtras) {
+            } else if (!desiredExtra && hasExtrasInList) {
                 this.shapes = [...this.baseShapes];
             }
         }
