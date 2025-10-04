@@ -39,7 +39,8 @@ class ProfileDisplay {
         this.arrowSize = 15;   // size of arrow (width from tip to base)
 
         // Pet & Bling picker state
-        this.petKeys = ['pet_bunny','pet_butterfly','pet_croc','pet_mole','pet_puffle'];
+    // First entry 'no' is a sentinel meaning no pet equipped
+    this.petKeys = ['no','pet_bunny','pet_butterfly','pet_croc','pet_mole','pet_puffle'];
     this.blingKeys = ['crown','halo','chain','shades','belt','trophy'];
         this.petIndex = 0;
         this.blingIndex = 0;
@@ -86,7 +87,9 @@ class ProfileDisplay {
                 const existingPet = pets.find(p => p.owner === you);
                 if (existingPet) {
                     const idx = this.petKeys.indexOf(existingPet.spriteKey);
-                    if (idx >= 0) this.petIndex = idx;
+                    if (idx >= 0) this.petIndex = idx; else this.petIndex = 0; // default to 'no'
+                } else {
+                    this.petIndex = 0; // 'no'
                 }
                 if (you.blingType) {
                     const bIdx = this.blingKeys.indexOf(you.blingType);
@@ -405,7 +408,12 @@ class ProfileDisplay {
             if (petSprite) {
                 const pw = 48; const ph = pw * (petSprite.height / petSprite.width);
                 push();
-                tint(c[0], c[1], c[2], 220);
+                if (petKey === 'no') {
+                    // draw cross more subtle
+                    tint(c[0], c[1], c[2], 140);
+                } else {
+                    tint(c[0], c[1], c[2], 220);
+                }
                 image(petSprite, centerX, this.y + this.petPickerY, pw, ph);
                 pop();
             }
@@ -427,15 +435,24 @@ class ProfileDisplay {
         const chosenKey = this.petKeys[this.petIndex];
         try {
             let existingPet = pets.find(p => p.owner === you);
-            if (!existingPet) {
-                existingPet = new Pet(you, chosenKey);
-                pets.push(existingPet);
+            if (chosenKey === 'no') {
+                // Remove pet if exists
+                if (existingPet) {
+                    const idx = pets.indexOf(existingPet);
+                    if (idx !== -1) pets.splice(idx, 1);
+                }
+                you.petKey = null;
             } else {
-                existingPet.spriteKey = chosenKey;
-                if (typeof existingPet.setSize === 'function') existingPet.setSize();
+                if (!existingPet) {
+                    existingPet = new Pet(you, chosenKey);
+                    pets.push(existingPet);
+                } else {
+                    existingPet.spriteKey = chosenKey;
+                    if (typeof existingPet.setSize === 'function') existingPet.setSize();
+                }
+                you.petKey = chosenKey;
             }
-            you.petKey = chosenKey;
-            // Immediately sync to server so others see pet (match outbound shaping in heartbeat)
+            // Immediately sync to server so others see pet (or its removal)
             const outbound = { id: you.id, x: you.x, y: you.y, cursor: you.cursor, lines: you.lines, color: you.color, name: you.name, shape: you.shape, ui_color: you.ui_color, tool: you.tool, petKey: you.petKey };
             sendMessage({ type: 'update', goblin: outbound });
         } catch (_) { /* ignore */ }

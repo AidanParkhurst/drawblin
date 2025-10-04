@@ -50,7 +50,7 @@ let drawing = false;
 let dragAccumDist = 0; // accumulate distance since last drag grain
 let lastDragX = null, lastDragY = null;
 let last_mouse = { x: 0, y: 0 };
-let line_granularity = 5; // How many pixels between each line point
+let line_granularity = 1; // How many pixels between each line point
 let last_line_count = 0;
 
 // networking
@@ -656,6 +656,9 @@ window.addEventListener('keydown', (event) => {
     const tag = t && t.tagName ? t.tagName.toLowerCase() : '';
     const typing = tag === 'input' || tag === 'textarea' || (t && t.isContentEditable);
     if (typing) return; // do not capture WASD when typing in chat/input
+    // Hotkeys: tool selection (only when not typing)
+    if (event.code === 'Digit1') { you.tool = 'brush'; }
+    else if (event.code === 'Digit2') { you.tool = 'eraser'; }
     you.keyStates[event.key] = true;
 });
 window.addEventListener('keyup', (event) => {
@@ -826,6 +829,14 @@ function onmessage(event) {
             // Handle user leaving the game
             const index = goblins.findIndex(g => g.id === data.userId);
             if (index !== -1) {
+                const leavingGoblin = goblins[index];
+                // Remove any pet(s) owned by this goblin
+                for (let i = pets.length - 1; i >= 0; i--) {
+                    const owner = pets[i]?.owner;
+                    if (owner && (owner === leavingGoblin || owner.id === data.userId)) {
+                        pets.splice(i, 1);
+                    }
+                }
                 goblins.splice(index, 1); // Remove the goblin from the list
                 console.log(`User ${data.userId} has left the game.`);
             } else {

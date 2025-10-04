@@ -20,6 +20,7 @@ import petButterflyImg from './assets/pets/pet_butterfly.png';
 import petCrocImg from './assets/pets/pet_croc.png';
 import petMoleImg from './assets/pets/pet_mole.png';
 import petPuffleImg from './assets/pets/pet_puffle.png';
+import petNoneImg from './assets/pets/no.png';
 // Bling
 import crownImg from './assets/bling/crown.png';
 import chainImg from './assets/bling/chain.png';
@@ -65,6 +66,7 @@ class Assets {
             "pet_croc": petCrocImg,
             "pet_mole": petMoleImg,
             "pet_puffle": petPuffleImg,
+            "no": petNoneImg,
         };
         this.sprites = {};
         this.font = neuchaFont; // Default font

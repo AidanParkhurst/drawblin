@@ -14,7 +14,7 @@ class Pet {
     this.accel = 0.35;
     this.friction = 0.9;
   	// Distance handling
-  	this.stopRadius = 55; // closer personal space before fully stopping
+  	this.stopRadius = 75; // closer personal space before fully stopping
 
     // Follow delay bookkeeping
     // Removed artificial delay: keep fields for possible future use but neutralize
@@ -24,8 +24,8 @@ class Pet {
 
     // Simple movement animation akin to goblins
     this.walk_cycle = 0;
-	this.walk_speed = 0.30;
-	this.bounce_height = 4; // keep bounce similar
+	  this.walk_speed = 0.30;
+	  this.bounce_height = 4; // keep bounce similar
     this.tilt_angle = 10; // stronger tilt
 
     // Per-sprite size (analogous to goblin setSize())
@@ -33,10 +33,10 @@ class Pet {
     this.setSize();
 
     // Persistent hover animation phase (used only by certain pets like butterfly)
-  this.hover_cycle = 0; // in radians
-  // Slower gentle hover: effective full cycle ~3s (hover_speed * TWO_PI ≈ 0.0021 rad/ms)
-  this.hover_speed = 0.00035; // base factor (multiplied by TWO_PI in update)
-  this.hover_height = 3; // peak offset in px (smaller, subtler)
+    this.hover_cycle = 0; // in radians
+    // Slower gentle hover: effective full cycle ~3s (hover_speed * TWO_PI ≈ 0.0021 rad/ms)
+    this.hover_speed = 0.00035; // base factor (multiplied by TWO_PI in update)
+    this.hover_height = 3; // peak offset in px (smaller, subtler)
   }
 
   // Size mapping allows visual balance across differently proportioned pet sprites

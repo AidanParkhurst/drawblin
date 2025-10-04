@@ -2,48 +2,63 @@
 import critterCover from './assets/promo/critter_cover.png';
 import blingCover from './assets/promo/bling_cover.png';
 import goblinCover from './assets/promo/goblin_cover.png';
+// Grouped promo images for carousels
+import blingGroup1 from './assets/promo/bling_group_1.png';
+import blingGroup2 from './assets/promo/bling_group_2.png';
+import blingGroup3 from './assets/promo/bling_group_3.png';
+import goblinGroup1 from './assets/promo/goblin_group_1.png';
+import goblinGroup2 from './assets/promo/goblin_group_2.png';
+import goblinGroup3 from './assets/promo/goblin_group_3.png';
+import goblinGroup4 from './assets/promo/goblin_group_4.png';
+import petGroup1 from './assets/promo/pet_group_1.png';
+import petGroup2 from './assets/promo/pet_group_2.png';
+import petGroup3 from './assets/promo/pet_group_3.png';
+import petGroup4 from './assets/promo/pet_group_4.png';
+import premiumBanner from './assets/promo/premium_banner.png';
+import { isAuthConfigured, getUser, ready as authReady } from './auth.js';
 
 const DEALS = {
   premium: {
     key: 'premium',
     title: 'Premium Membership',
     desc: 'Access all bundles this month for a simple recurring fee. New drops included while active.',
-    images: [
-      'https://placehold.co/800x600/FFF/444?text=Premium+Overview',
-      'https://placehold.co/800x600/FFF/777?text=Included+Bundles',
-      'https://placehold.co/800x600/FFF/999?text=Future+Drops'
-    ]
+    cover: premiumBanner,
+    images: [petGroup1,blingGroup1,blingGroup2,critterCover,blingCover,goblinCover,premiumBanner],
+    price: { dollars: 2, cents: '99', period: '/ month' },
+    includes: 'This purchase grants 1 month of access to all items.'
   },
   critter: {
     key: 'critter',
     title: 'The Critter Pet Pack',
     desc: 'Adorable companions that follow your goblin around. Includes multiple species and colors.',
     cover: critterCover,
-    images: [critterCover],
-    price: { dollars: 2, cents: '99' }
+    images: [petGroup1, petGroup2, petGroup3, petGroup4],
+    price: { dollars: 2, cents: '99' },
+    includes: 'This purchase grants permanent access to 5 cosmetic pets.'
   },
   bling: {
     key: 'bling',
-    title: 'The Winner Bling Bundle',
+    title: 'The Big Win Bling Bundle',
     desc: 'Crowns, sparkles, and shiny bits to flex your style. Winner or not, you will look the part.',
     cover: blingCover,
-    images: [blingCover],
+    images: [blingGroup1, blingGroup2, blingGroup3],
     price: { dollars: 1, cents: '99' }
   },
-  poppin: {
-    key: 'poppin',
-    title: 'The Poppin Goblin Pack',
-    desc: 'Extra animations and pops for your goblin. Bring the party wherever you go.',
+  moregobs: {
+    key: 'moregobs',
+    title: 'More Goblins',
+    desc: '4 more goblins to choose from!\n\n\nReggie: tall, more nose than brains\n\nBricky: rectangular in all the right ways\n\nSticky: little and nimble\n\nYogi: might know something.',
     cover: goblinCover,
-    images: [goblinCover],
-    price: { dollars: 4, cents: '99' }
+    images: [goblinGroup1, goblinGroup2, goblinGroup3, goblinGroup4, goblinCover],
+    price: { dollars: 4, cents: '99' },
+    includes: 'This purchase grants permanent access to 4 additional goblin shapes.'
   }
 };
 
 function qs(sel, root=document) { return root.querySelector(sel); }
 function qsa(sel, root=document) { return Array.from(root.querySelectorAll(sel)); }
 
-function openModal(deal) {
+async function openModal(deal) {
   const modal = qs('#deal-modal');
   if (!modal) return;
 
@@ -55,6 +70,7 @@ function openModal(deal) {
   const img = qs('.carousel__image', modal);
   const thumbs = qs('.carousel__thumbs', modal);
   title.textContent = deal.title;
+  // Allow multi-line descriptions via \n
   desc.textContent = deal.desc;
 
   let idx = 0;
@@ -108,14 +124,41 @@ function openModal(deal) {
   document.addEventListener('keydown', onKey);
   modal._cleanup = () => document.removeEventListener('keydown', onKey);
 
-  const buyBtn = qs('#modal-buy', modal);
-  if (buyBtn) {
-    buyBtn.onclick = () => {
-      // Placeholder buy action
-      buyBtn.disabled = true;
-      buyBtn.textContent = 'Purchased!';
-      setTimeout(() => { buyBtn.disabled = false; buyBtn.textContent = 'Buy!'; }, 1500);
-    };
+  // Build includes/fine print area and buy/sign-in button
+  const cta = qs('.modal__cta', modal);
+  if (cta) {
+    cta.innerHTML = '';
+    const includes = document.createElement('div');
+    includes.className = 'modal__includes';
+    // Simple default copy; can be customized per deal with deal.includes
+    includes.textContent = deal.includes || 'This purchase grants permanent access to all items shown in this pack for your account.';
+    cta.appendChild(includes);
+
+    const btn = document.createElement('button');
+    // If not signed in, prompt sign in instead of buy
+    let authed = false;
+    try { if (isAuthConfigured()) { await authReady(); authed = !!getUser(); } } catch {}
+    if (!authed) {
+      btn.id = 'modal-signin';
+      btn.className = 'btn-buy';
+      btn.textContent = 'Sign in before purchasing';
+      btn.onclick = () => {
+        // navigate to login preserving base path
+        const basePath = window.location.pathname.replace(/\/[^/]*$/, '/');
+        const url = `${window.location.origin}${basePath}login`;
+        window.location.assign(url);
+      };
+    } else {
+      btn.id = 'modal-buy';
+      btn.className = 'btn-buy';
+      btn.textContent = 'Buy!';
+      btn.onclick = () => {
+        btn.disabled = true;
+        btn.textContent = 'Purchased!';
+        setTimeout(() => { btn.disabled = false; btn.textContent = 'Buy!'; }, 1500);
+      };
+    }
+    cta.appendChild(btn);
   }
 }
 
@@ -149,8 +192,13 @@ function hookGrid() {
     if (deal?.price && !card.querySelector('.shop-card__price')) {
       const p = document.createElement('div');
       p.className = 'shop-card__price';
-      p.setAttribute('aria-label', `Price $${deal.price.dollars}.${deal.price.cents}`);
-      p.innerHTML = `<span class="price-symbol">$</span><span class="price-dollars">${deal.price.dollars}</span><span class="price-decimal">.</span><span class="price-cents">${deal.price.cents}</span>`;
+      const aria = deal.price.period ? `Price $${deal.price.dollars}.${deal.price.cents} ${deal.price.period}` : `Price $${deal.price.dollars}.${deal.price.cents}`;
+      p.setAttribute('aria-label', aria);
+      let html = `<span class="price-symbol">$</span><span class="price-dollars">${deal.price.dollars}</span><span class="price-decimal">.</span><span class="price-cents">${deal.price.cents}</span>`;
+      if (deal.price.period) {
+        html += `<span class="price-period">${deal.price.period}</span>`;
+      }
+      p.innerHTML = html;
       card.appendChild(p);
     }
     card.addEventListener('click', () => {
