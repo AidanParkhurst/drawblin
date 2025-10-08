@@ -4,7 +4,7 @@ import http from 'http';
 import express from 'express';
 import Stripe from 'stripe';
 import { STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, summarizeEnv } from './env.js';
-import { recordCheckoutSessionIdentity, markPaymentIntentSucceeded } from './payments.js';
+import { recordCheckoutSessionIdentity, markPaymentIntentSucceeded, markSubscriptionCanceledOrUpdated } from './payments.js';
 import url from 'url';
 import FreeDrawLobby from './lobbies/FreeDrawLobby.js';
 import QuickDrawLobby from './lobbies/QuickDrawLobby.js';
@@ -69,6 +69,11 @@ app.post('/webhook/stripe', async (req, res) => {
             case 'payment_intent.succeeded':
                 await markPaymentIntentSucceeded(event);
                 console.log(`Confirmed payment intent ${event.data?.object?.id}`);
+                break;
+            case 'customer.subscription.deleted':
+            case 'customer.subscription.updated':
+                await markSubscriptionCanceledOrUpdated(event);
+                console.log(`Processed subscription change ${event.type} for ${event.data?.object?.id}`);
                 break;
             default:
                 console.log('Unhandled Stripe event type:', event.type);

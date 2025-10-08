@@ -114,8 +114,8 @@ async function bindLoginButton() {
 
   const menuEl = document.getElementById('account-menu');
   const nameInput = document.getElementById('account-name-input');
-  const saveBtn = document.getElementById('account-save-name');
   const shopBtn = document.getElementById('account-open-shop');
+  const accountBtn = document.getElementById('account-open-account');
   const signoutBtn = document.getElementById('account-signout');
   // Prevent UI clicks from reaching p5 global mouse handlers
   const swallow = (el) => {
@@ -199,20 +199,27 @@ async function bindLoginButton() {
       window.location.assign(url);
     };
   }
-  if (saveBtn && nameInput) {
+  if (accountBtn) {
+    accountBtn.onclick = (e) => {
+      e.preventDefault();
+      const basePath = window.location.pathname.replace(/\/[^/]*$/, '/');
+      const url = `${window.location.origin}${basePath}account.html`;
+      window.location.assign(url);
+    };
+  }
+  if (nameInput) {
     const submit = async () => {
       const newName = (nameInput.value || '').trim().slice(0, 40);
       if (!newName) return;
       const saved = await upsertProfileName(newName);
       if (saved) {
-        // Notify listeners (e.g., index.js to update goblin name)
         window.dispatchEvent(new CustomEvent('profile:name-updated', { detail: { name: saved } }));
       }
     };
-    saveBtn.onclick = async (e) => { e.preventDefault(); await submit(); };
     nameInput.addEventListener('keydown', async (e) => {
       if (e.key === 'Enter') { e.preventDefault(); await submit(); }
     });
+    nameInput.addEventListener('blur', async () => { await submit(); });
   }
 }
 

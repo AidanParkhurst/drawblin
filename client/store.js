@@ -21,7 +21,7 @@ const DEALS = {
   premium: {
     key: 'premium',
     title: 'Premium Membership',
-    desc: 'Access all bundles this month for a simple recurring fee. New drops included while active.',
+    desc: 'Not sure what bundle you want?\n\n\nPremium members get them all!\n+ 5 shiny accessories to flex your wins\n+ 5 adorable animals to keep you company\n+ 4 extra goblins to choose from\n\n\nAll for $2.99/month.\n(Cancel anytime, no strings attached)',
     cover: premiumBanner,
     images: [petGroup1,blingGroup1,blingGroup2,critterCover,blingCover,goblinCover,premiumBanner],
     price: { dollars: 2, cents: '99', period: '/ month' },
@@ -29,8 +29,8 @@ const DEALS = {
   },
   critter: {
     key: 'critter',
-    title: 'The Critter Pet Pack',
-    desc: 'Adorable companions that follow your goblin around. Includes multiple species and colors.',
+    title: 'The Companion Critter Collection',
+    desc: 'You deserve an entourage.\n\n\nGet 5 pets to pick from, and never draw alone again!\n+ Bunny (great listener)\n+ Butterfly (distractingly beautiful)\n+ Croc (only bites sometimes)\n+ Mole (found in the backyard)\n+ Puffle (a reference from ancient times)\n\n\nAll for $2.99 (one time purchase)',
     cover: critterCover,
     images: [petGroup1, petGroup2, petGroup3, petGroup4],
     price: { dollars: 2, cents: '99' },
@@ -39,15 +39,16 @@ const DEALS = {
   bling: {
     key: 'bling',
     title: 'The Big Win Bling Bundle',
-    desc: 'Crowns, sparkles, and shiny bits to flex your style. Winner or not, you will look the part.',
+    desc: 'Do you win often? I bet you do.\n\n\nLook the part with 5 shiny new accessories!\n+ The Halo (Pure in spirit and in skill)\n+ Shades (Block out the haters, or the sun)\n+ Chains (you\'d wear two if they weren\'t so heavy)\n+ The Stanley Cup (for the Stanley fans)\n+ Champ\'s Belt (pound for pound, undisputed)\n\n\nAll for $1.99 (one time purchase)',
     cover: blingCover,
     images: [blingGroup1, blingGroup2, blingGroup3],
-    price: { dollars: 1, cents: '99' }
+    price: { dollars: 1, cents: '99' },
+    includes: 'This purchase grants permanent access to 5 accessories, equippable whenever you are 1st on the leaderboard.'
   },
   moregobs: {
     key: 'moregobs',
     title: 'More Goblins',
-    desc: '4 more goblins to choose from!\n\n\nReggie: tall, more nose than brains\n\nBricky: rectangular in all the right ways\n\nSticky: little and nimble\n\nYogi: might know something.',
+    desc: 'Can you ever get enough goblins? I can\'t.\n\n\nExpand your options, with 4 new goblins to choose from!\n+ Reggie (tall, more nose than brains)\n+ Bricky (rectangular in all the right ways)\n+ Sticky (little and nimble)\n+ Yogi (might know something).\n\n\nAll for $4.99 (one time purchase)',
     cover: goblinCover,
     images: [goblinGroup1, goblinGroup2, goblinGroup3, goblinGroup4, goblinCover],
     price: { dollars: 4, cents: '99' },

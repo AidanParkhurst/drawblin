@@ -26,6 +26,7 @@ export default defineConfig({
                 login: path.resolve(rootDir, 'login.html'),
                 house: path.resolve(rootDir, 'house.html'),
                 shop: path.resolve(rootDir, 'shop.html'),
+                account: path.resolve(rootDir, 'account.html'),
             }
         }
     },

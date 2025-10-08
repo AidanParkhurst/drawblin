@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drawblins • Account</title>
+  <link href="https://fonts.googleapis.com/css2?family=Neucha&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="index.css" />
+  <link rel="stylesheet" href="shop.css" />
+  <script type="module" src="auth.js"></script>
+  <script type="module" src="account-page.js"></script>
+  <style>
+    body.account-body { background: rgb(240,240,240); font-family: 'Neucha', cursive; }
+    body.account-body, .account-main, .account-card, .field-label, .field-value, .account-row-title, .account-row-sub, .btn-outline, .btn-primary, .back-link a { font-family: 'Neucha', cursive; }
+  .account-main { width: clamp(60vw, 72vw, 1300px); margin: 96px auto 80px; padding: 0 24px; }
+    .account-section { margin-bottom: 24px; }
+  .account-card { background: transparent; border-radius: 18px; border: 2px dashed rgba(0,0,0,0.15); padding: 20px; box-shadow: none; transition: all 0.2s ease; }
+    .account-card + .account-card { margin-top: 12px; }
+    .account-card--row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .account-h1 { margin: 16px 0 8px; font-size: 42px; }
+    .account-sub { margin: 0 0 16px; color: rgba(30,30,30,0.7); }
+  .account-h2 { font-size: 16px; margin: 24px 0 8px; color: rgba(30,30,30,0.55); font-weight: normal; }
+    .field-label { font-size: 14px; color: rgba(30,30,30,0.55); margin-bottom: 6px; }
+    .field-value { font-size: 22px; color: rgba(20,20,20,0.95); }
+    .muted { color: rgba(30,30,30,0.6); }
+    .account-row-title { font-size: 18px; color: rgba(20,20,20,0.95); }
+    .account-row-sub { font-size: 14px; color: rgba(30,30,30,0.6); }
+  .account-row { cursor: default; transition: all 0.2s ease; }
+    .account-row:hover { background: rgba(255,255,255,0.25); box-shadow: 0 4px 16px rgba(0,0,0,0.06); transform: translateY(-1px); }
+    .btn-outline { background: transparent; border: 2px solid rgba(0,0,0,0.25); border-radius: 12px; padding: 10px 14px; cursor: pointer; font-family: 'Neucha'; }
+    .btn-outline:hover { background: rgba(0,0,0,0.04); }
+    .btn-primary { background: linear-gradient(180deg,#2ecc71,#27ae60); color: #fff; border: none; border-radius: 14px; padding: 14px 18px; font-size: 18px; cursor: pointer; box-shadow: 0 2px 0 rgba(0,0,0,0.15); }
+    .center { display: flex; align-items: center; justify-content: center; }
+    .identity-block { margin: 24px 0; }
+    .identity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    @media (max-width: 800px) { .identity-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body class="account-body">
+  <a id="login-button" href="./login">Login</a>
+  <div id="account-menu" style="display:none;">
+      <div class="account-menu__name-label">Display name</div>
+      <input id="account-name-input" class="account-menu__input" type="text" maxlength="40" placeholder="Your goblin name" />
+      <div class="account-menu__buttons">
+          <button id="account-open-shop" class="account-menu__action">Shop</button>
+          <button id="account-signout" class="account-menu__action account-menu__action--danger">Sign out</button>
+      </div>
+  </div>
+
+  <main class="account-main">
+    <header>
+      <h1 class="account-h1">Your Account</h1>
+      <p class="account-sub">Manage your goblin, membership, and packs.</p>
+    </header>
+
+    <section id="account-content" class="account-section">
+      <!-- Filled by account.js; shows sign-in CTA or details -->
+    </section>
+
+    <div class="back-link"><a href="./"> &lt;- Back to game</a></div>
+  </main>
+</body>
+</html>

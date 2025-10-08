@@ -65,6 +65,103 @@ let homePortal = null;
 let hasInput = false;
 let pets = [];
 
+// --- Global line ordering (for collaborative drawing) ---
+// We keep a global append-only list of line segments in the order they were first seen.
+// Each segment gets a stable key per owner so we can de-duplicate across network heartbeats
+// and mark removals efficiently without reshuffling.
+let __lineSeq = 1; // monotonically increasing
+const __globalLines = []; // { sx,sy,ex,ey,color,weight,seq,ownerId, removed }
+const __knownLineKeys = new Map(); // key -> entry
+const __perOwnerKeys = new Map(); // ownerId -> Set(keys)
+
+function __colorKey(c){ return Array.isArray(c) ? c.join(',') : String(c); }
+function __normPt(pt){
+    if (!pt) return { x: 0, y: 0 };
+    if (Array.isArray(pt._values) && pt._values.length >= 2) return { x: pt._values[0], y: pt._values[1] };
+    if (typeof pt.x === 'number' && typeof pt.y === 'number') return { x: pt.x, y: pt.y };
+    return { x: 0, y: 0 };
+}
+function __lineKey(ownerId, seg){
+    // Build a stable signature for a line segment; support both {start,end} and {sx,sy,ex,ey}
+    let sx, sy, ex, ey;
+    if (seg.start || seg.sx != null) {
+        const s = seg.start ? __normPt(seg.start) : { x: seg.sx, y: seg.sy };
+        sx = s.x; sy = s.y;
+    } else { sx = 0; sy = 0; }
+    if (seg.end || seg.ex != null) {
+        const e = seg.end ? __normPt(seg.end) : { x: seg.ex, y: seg.ey };
+        ex = e.x; ey = e.y;
+    } else { ex = sx; ey = sy; }
+    const col = seg.color || seg.col || you?.color || [0,0,0];
+    const w = seg.weight || seg.w || 0;
+    return `${ownerId}:${sx},${sy}|${ex},${ey}|${__colorKey(col)}|${w}`;
+}
+function __ensureOwnerSet(ownerId){
+    let set = __perOwnerKeys.get(ownerId);
+    if (!set) { set = new Set(); __perOwnerKeys.set(ownerId, set); }
+    return set;
+}
+function __registerLine(ownerId, seg){
+    const key = __lineKey(ownerId, seg);
+    if (__knownLineKeys.has(key)) return; // already tracked
+    const s = seg.start ? __normPt(seg.start) : { x: seg.sx ?? 0, y: seg.sy ?? 0 };
+    const e = seg.end ? __normPt(seg.end)   : { x: seg.ex ?? s.x, y: seg.ey ?? s.y };
+    const entry = {
+        sx: s.x,
+        sy: s.y,
+        ex: e.x,
+        ey: e.y,
+        color: Array.isArray(seg.color) ? seg.color.slice() : seg.color,
+        weight: seg.weight,
+        seq: __lineSeq++,
+        ownerId: ownerId,
+        removed: false,
+    };
+    __globalLines.push(entry);
+    __knownLineKeys.set(key, entry);
+    __ensureOwnerSet(ownerId).add(key);
+}
+function __removeOwnerLineByKey(ownerId, key){
+    const entry = __knownLineKeys.get(key);
+    if (entry) { entry.removed = true; __knownLineKeys.delete(key); }
+    const set = __perOwnerKeys.get(ownerId);
+    if (set) set.delete(key);
+}
+function __syncOwnerLines(ownerId, segs){
+    // Register any new segments and mark removed those no longer present
+    const newKeys = new Set();
+    for (const seg of segs){
+        const key = __lineKey(ownerId, seg);
+        newKeys.add(key);
+        if (!__knownLineKeys.has(key)) __registerLine(ownerId, seg);
+    }
+    const set = __ensureOwnerSet(ownerId);
+    for (const key of Array.from(set)){
+        if (!newKeys.has(key)) __removeOwnerLineByKey(ownerId, key);
+    }
+}
+
+function __clearOwnerLines(ownerId){
+    // Convenience to mark all of an owner's lines removed
+    __syncOwnerLines(ownerId, []);
+}
+
+function __drawGlobalLines(){
+    // Render in seq order; skip removed; cache style to minimize state changes
+    if (__globalLines.length === 0) return;
+    push();
+    strokeJoin(ROUND); strokeCap(ROUND); noFill();
+    let lastColorKey = null; let lastWeight = -1;
+    for (const seg of __globalLines){
+        if (seg.removed) continue;
+        const ckey = __colorKey(seg.color);
+        if (ckey !== lastColorKey){ stroke(seg.color); lastColorKey = ckey; }
+        if (seg.weight !== lastWeight){ strokeWeight(seg.weight); lastWeight = seg.weight; }
+        line(seg.sx, seg.sy, seg.ex, seg.ey);
+    }
+    pop();
+}
+
 // Line intersection utility function for eraser
 function lineIntersect(line1Start, line1End, line2Start, line2End) {
     const x1 = line1Start.x, y1 = line1Start.y;
@@ -178,7 +275,6 @@ async function start() {
     });
     portals.push(freedraw_portal, quickdraw_portal, guessinggame_portal);
 
-    ensureHomePortal();
 
     // If URL indicates a house lobby (supports /house and /house.html for static hosting), auto-join and mount controls
     try {
@@ -364,22 +460,18 @@ window.draw = () => {
     // Update pets after goblin state is updated (they follow owners)
     for (let p of pets) { if (p && typeof p.update === 'function') p.update(deltaTime); }
 
-    // Render pass 1: lines (beneath goblins)
-    for (let g of goblins) {
-        if (g && g._visibleThisFrame && g._linesVisibleThisFrame && typeof g.display_lines === 'function') {
-            g.display_lines(g.lines || []);
-        }
-    }
+    // Render pass 1: lines (beneath goblins), in global draw order
+    __drawGlobalLines();
 
-    // Render pass 2: goblins (sprites and names)
+    // Render pets before goblins so they appear behind players but above lines
+    for (let p of pets) { if (p && typeof p.display === 'function') p.display(); }
+
+    // Render pass 2: goblins (sprites and names) on top of pets
     for (let g of goblins) {
         if (g && g._visibleThisFrame && typeof g.display === 'function') {
             g.display(!!g._drawNameThisFrame);
         }
     }
-
-    // Render pets after goblins so they appear in front of lines and mixed with characters
-    for (let p of pets) { if (p && typeof p.display === 'function') p.display(); }
 
     // Render pass 3: overlays (cursor range, cursor dot, speech), always above goblins
     for (let g of goblins) {
@@ -417,10 +509,19 @@ window.draw = () => {
             
             const radius = typeof you.eraserRadius === 'number' ? you.eraserRadius : 15;
             // Check each line for proximity to the eraser path
+            let removedAny = false;
             for (let i = you.lines.length - 1; i >= 0; i--) {
                 const line = you.lines[i];
                 const d = segmentSegmentDistance(eraserLine.start, eraserLine.end, line.start, line.end);
-                if (d <= radius) you.lines.splice(i, 1);
+                if (d <= radius) {
+                    // Remove from local list; we'll reconcile global registry after the loop
+                    you.lines.splice(i, 1);
+                    removedAny = true;
+                }
+            }
+            // After mutating local lines, resync the global registry for this owner
+            if (removedAny && typeof __syncOwnerLines === 'function') {
+                try { __syncOwnerLines(you.id, you.lines); } catch {}
             }
         } else {
             // For drawing, throttle additions if we haven't moved enough
@@ -428,6 +529,7 @@ window.draw = () => {
             // Regular brush/drawing logic
             var l = new Line(createVector(last_mouse.x, last_mouse.y), createVector(you.cursor.x, you.cursor.y), you.color, 5);
             you.lines.push(l); // Store the line in the goblin's lines array
+            try { __registerLine(you.id, l); } catch {}
             // Grain-based drag SFX using segment distance
             if (lastDragX == null) { lastDragX = last_mouse.x; lastDragY = last_mouse.y; }
             const segDx = you.cursor.x - lastDragX;
@@ -632,6 +734,7 @@ window.mouseReleased = () => {
     if (drawing && you.lines.length === last_line_count && you.tool !== 'eraser') { // If no new line was added and not using eraser
         var l = new Line(createVector(you.cursor.x, you.cursor.y), createVector(you.cursor.x, you.cursor.y), you.color, 5);
         you.lines.push(l); // Store the line in the goblin's lines array
+        try { __registerLine(you.id, l); } catch {}
     }
     // Sample visual pop on mouse release (quick, small). Easy to remove later.
     if (drawing && you.tool !== 'eraser') {
@@ -776,7 +879,9 @@ function onmessage(event) {
                 if (data.goblin.petKey && typeof data.goblin.petKey === 'string') {
                     try { const p = new Pet(newcomer, data.goblin.petKey); pets.push(p); newcomer.petKey = data.goblin.petKey; } catch {}
                 }
-                return;
+                // Continue into the normal goblin update path by assigning
+                // so we apply cursor, lines, etc.
+                goblin = newcomer;
             }
             if (goblin) {
                 // TODO: Prob shouldn't be accessing _values, but otherwise it doesnt work
@@ -813,16 +918,19 @@ function onmessage(event) {
                     if (idx !== -1) pets.splice(idx, 1);
                     goblin.petKey = null;
                 }
-                if (goblin.lines.length !== data.goblin.lines.length) {
-                    goblin.lines = [];
-                    for (let i = 0; i < data.goblin.lines.length; i++) {
-                        goblin.lines.push(new Line(
-                            createVector(data.goblin.lines[i].start._values[0], data.goblin.lines[i].start._values[1]),
-                            createVector(data.goblin.lines[i].end._values[0], data.goblin.lines[i].end._values[1]),
-                            data.goblin.lines[i].color,
-                            data.goblin.lines[i].weight));
-                    }
+                // Rebuild remote user's lines and sync to global registry preserving order
+                const incomingLines = Array.isArray(data.goblin.lines) ? data.goblin.lines : [];
+                const rebuilt = [];
+                for (let i = 0; i < incomingLines.length; i++) {
+                    const seg = incomingLines[i];
+                    const sx = (seg.start && Array.isArray(seg.start._values)) ? seg.start._values[0] : (seg.start && typeof seg.start.x === 'number' ? seg.start.x : 0);
+                    const sy = (seg.start && Array.isArray(seg.start._values)) ? seg.start._values[1] : (seg.start && typeof seg.start.y === 'number' ? seg.start.y : 0);
+                    const ex = (seg.end && Array.isArray(seg.end._values)) ? seg.end._values[0] : (seg.end && typeof seg.end.x === 'number' ? seg.end.x : sx);
+                    const ey = (seg.end && Array.isArray(seg.end._values)) ? seg.end._values[1] : (seg.end && typeof seg.end.y === 'number' ? seg.end.y : sy);
+                    rebuilt.push(new Line(createVector(sx, sy), createVector(ex, ey), seg.color, seg.weight));
                 }
+                goblin.lines = rebuilt;
+                try { __syncOwnerLines(goblin.id, rebuilt); } catch {}
             }
             break;
         case "user_left":
@@ -838,6 +946,7 @@ function onmessage(event) {
                     }
                 }
                 goblins.splice(index, 1); // Remove the goblin from the list
+                try { __clearOwnerLines(data.userId); } catch {}
                 console.log(`User ${data.userId} has left the game.`);
             } else {
                 console.warn(`User ${data.userId} not found in goblins.`);
@@ -855,12 +964,13 @@ function onmessage(event) {
                                     for (let goblin of goblins) {
                                         if (quickdrawPrimaryWinner == null || goblin.id !== quickdrawPrimaryWinner) {
                                             goblin.lines = [];
+                                            try { __clearOwnerLines(goblin.id); } catch {}
                                         }
                                     }
                                 } else {
                                     // Other modes may keep all winners (currently none use this branch)
                                     for (let goblin of goblins) {
-                                        if (!last_winners.has(goblin.id)) goblin.lines = [];
+                                        if (!last_winners.has(goblin.id)) { goblin.lines = []; try { __clearOwnerLines(goblin.id); } catch {} }
                                     }
                                 }
                             }
@@ -868,9 +978,7 @@ function onmessage(event) {
 
                 } else if (data.state === 'drawing') {
                     if (game_state !== 'drawing') { // just entered the drawing state, clear previous drawings
-                        for (let goblin of goblins) {
-                            goblin.lines = [];
-                        }
+                        for (let goblin of goblins) { goblin.lines = []; try { __clearOwnerLines(goblin.id); } catch {} }
                     }
                     prompt = data.prompt;
                     timer = data.time;
@@ -892,7 +1000,7 @@ function onmessage(event) {
             else if (lobby_type === 'guessinggame') {
                 if (data.state === 'waiting') {
                     // Entering scoreboard/waiting: clear all drawings so text isn't overlapped
-                    for (let g of goblins) { g.lines = []; }
+                    for (let g of goblins) { g.lines = []; try { __clearOwnerLines(g.id); } catch {} }
                     timer = data.time;
                 } else if (data.state === 'drawing') {
                     current_artist = data.artistId;
@@ -900,6 +1008,7 @@ function onmessage(event) {
                     if (you.id === current_artist) {
                         if (game_state !== 'drawing') { // just entered the drawing state, clear previous drawings
                             you.lines = []; // Clear previous lines for the new drawing
+                            try { __clearOwnerLines(you.id); } catch {}
                         }
                         prompt = data.prompt;
                     } else {

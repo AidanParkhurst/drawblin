@@ -40,8 +40,8 @@ const prompts = {
     '(animal) playing a (instrument)',
     '(person) saving a (person)',
     '(person) stuck in a (container)',
-    'a stack of (object)s on a (object)',
-    'a (adj) (object) bouncing on a (object)',
+    'stack of (object)s on a (object)',
+    '(adj) (object) bouncing on a (object)',
     '(vehicle) parked next to a (structure)',
     '(adj) (vehicle) flying over a (place)',
     '(person) repairing a (vehicle) with a (tool)',
@@ -50,7 +50,7 @@ const prompts = {
     '(character) casting a spell on a (object)',
     '(person) dancing with a (character)',
     '(vehicle) made of (material)',
-    '(adj) (animal) on a (ridable) in a (place)',
+    '(animal) on a (ridable) in a (place)',
     '(character) trapped inside a (container)',
     'tower of (food)s',
     '(adj) (person) playing (sport)',
@@ -59,7 +59,7 @@ const prompts = {
     '(vehicle+space) landing on a (place)',
     '(person) flying with a (wearable)',
     '(animal) stuck in a (container) with (food)',
-    'a bridge of (object)s over (place)',
+    'bridge of (object)s over (place)',
     '(person) cooking (food) over a (fire)',
     '(character) guarding a (object)',
     '(person) riding a (ridable) through a (weather)'
@@ -69,7 +69,7 @@ const prompts = {
     'ancient','tiny','huge','gigantic','fluffy','spiky','slimy','shiny','rusty','colorful',
     'striped','spotted','sneaky','sleepy','grumpy','hungry','broken','glowing','golden','wooden',
     'metal','plastic','fuzzy','happy','sad','angry','sparkly','muddy','frozen','melting','glitchy','heroic',
-    'clumsy','curious','mysterious'
+    'clumsy','mysterious'
   ],
 
   // Rich word bank with tags for contextual selection

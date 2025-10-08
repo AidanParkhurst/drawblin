@@ -67,6 +67,18 @@ async function resolveUserByEmail(supa, email) {
   }
 }
 
+async function fetchStripeCustomerEmail(customerId) {
+  if (!STRIPE_SECRET_KEY || !customerId) return null;
+  try {
+    const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
+    const customer = await stripe.customers.retrieve(customerId);
+    if (customer && typeof customer.email === 'string' && customer.email) return customer.email;
+  } catch (e) {
+    console.warn('Stripe customer fetch failed:', e?.message || e);
+  }
+  return null;
+}
+
 function extractAccountEmail(session) {
   // Priority: explicit metadata keys, then custom_fields, then customer email
   const md = session?.metadata || {};
@@ -388,4 +400,71 @@ async function applyEntitlementsForSessionOnly(enrichedEvent, userId) {
   for (const g of granted) {
     await supa.from('entitlement_events').insert({ user_id: userId, payment_id: paymentRow?.id || null, kind: 'grant', entitlement: g, detail: { session_only: true } });
   }
+}
+
+// --- Subscription cancellation / revocation ---
+export async function markSubscriptionCanceledOrUpdated(event) {
+  // We only act when the subscription is effectively canceled.
+  const sub = event?.data?.object || {};
+  const status = (sub.status || '').toLowerCase();
+  const canceledAt = sub.canceled_at || null; // seconds since epoch or null
+  const cancelAt = sub.cancel_at || null;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const isCanceled = status === 'canceled' || (canceledAt && canceledAt > 0) || (cancelAt && cancelAt <= nowSec);
+  if (!isCanceled) return false;
+
+  const supa = getAdminSupabase();
+  if (!supa) throw new Error('Supabase admin client unavailable');
+
+  // Resolve user by email via Stripe customer
+  const customerId = sub.customer || null;
+  let email = null;
+  // Some events include customer_details on latest_invoice; try that first
+  try {
+    email = sub?.latest_invoice?.customer_email || null;
+  } catch {}
+  if (!email) email = await fetchStripeCustomerEmail(customerId);
+  if (!email) {
+    console.warn('Subscription cancel: could not resolve customer email; skipping entitlement revoke');
+    return false;
+  }
+
+  const { userId } = await resolveUserByEmail(supa, email);
+  if (!userId) {
+    console.warn('Subscription cancel: no matching user for email', email);
+    return false;
+  }
+
+  // Ensure entitlements row exists, then revoke premium
+  await ensureUserEntitlementsRow(supa, userId);
+  const updates = { has_premium: false, updated_at: new Date().toISOString() };
+  const { error: upErr } = await supa.from('user_entitlements').update(updates).eq('user_id', userId);
+  if (upErr) {
+    console.error('Failed revoking premium:', upErr.message);
+    return false;
+  }
+  // Record audit event
+  try {
+    // Try to associate to a related payment record by email match (best-effort)
+    let paymentId = null;
+    try {
+      const { data: pay } = await supa
+        .from('payments')
+        .select('id')
+        .or(`customer_email.eq.${email},resolved_user_email.eq.${email}`)
+        .order('id', { ascending: false })
+        .limit(1);
+      if (pay && pay.length) paymentId = pay[0].id;
+    } catch {}
+    await supa.from('entitlement_events').insert({
+      user_id: userId,
+      payment_id: paymentId,
+      kind: 'revoke',
+      entitlement: 'premium',
+      detail: { subscription_id: sub.id, status, canceled_at: canceledAt || null, cancel_at: cancelAt || null }
+    });
+  } catch (e) {
+    console.warn('Failed to insert entitlement revoke event:', e?.message || e);
+  }
+  return true;
 }

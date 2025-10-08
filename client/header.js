@@ -40,10 +40,15 @@ export function drawHeader(maskedPrompt, seconds, uiColor, options = {}) {
     textSize(24); textAlign(LEFT, CENTER);
     const y = 50;
     const spaceW = Math.max(textWidth(' '), textWidth('_'));
+    // Add a small gap after each underscore so underscores don't visually merge
+    const underscoreW = textWidth('_');
+    const underscoreGap = Math.max(1, Math.min(6, Math.round(spaceW * 0.25)));
     function measure(str){
         let w=0, run='';
         for (const c of str){
-            if (c===' '){ if(run){ w+=textWidth(run); run=''; } w+=spaceW; } else run+=c;
+            if (c===' '){ if(run){ w+=textWidth(run); run=''; } w+=spaceW; }
+            else if (c==='_' ){ if(run){ w+=textWidth(run); run=''; } w+=underscoreW + underscoreGap; }
+            else run+=c;
         }
         if (run) w+=textWidth(run); return w;
     }
@@ -63,6 +68,7 @@ export function drawHeader(maskedPrompt, seconds, uiColor, options = {}) {
         let run='';
         for (const c of t.text){
             if (c===' '){ if(run){ text(run,x,y); x+=textWidth(run); run=''; } x+=spaceW; }
+            else if (c==='_' ){ if(run){ text(run,x,y); x+=textWidth(run); run=''; } text('_', x, y); x += underscoreW + underscoreGap; }
             else run+=c;
         }
         if (run){ text(run,x,y); x+=textWidth(run); }
