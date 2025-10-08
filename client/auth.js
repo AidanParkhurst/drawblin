@@ -122,7 +122,7 @@ async function bindLoginButton() {
     if (!el) return;
     const isInteractive = (e) => {
       const t = e.target;
-      return t && t.closest && t.closest('input, textarea, select, button, [contenteditable="true"]');
+      return t && t.closest && t.closest('input, textarea, select, button, a, [role="button"], [contenteditable="true"]');
     };
     const cancel = (e) => { 
       e.stopPropagation(); 

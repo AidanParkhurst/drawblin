@@ -74,12 +74,15 @@ body {
 
 #account-menu .account-menu__buttons {
     display: flex;
+    flex-direction: column;
     gap: 8px;
     margin-top: 10px;
 }
 
 #account-menu .account-menu__action {
+    display: block;
     width: 100%;
+    box-sizing: border-box;
     padding: 8px 10px;
 
     border: 3px dashed rgba(30, 30, 30, 0.2);
@@ -89,6 +92,8 @@ body {
     font-size: 18px;
     color: rgba(30, 30, 30, 0.7);
     background: rgba(255, 255, 255, 0);
+    text-decoration: none; /* for anchor-style buttons */
+    text-align: center; /* keep label centered for anchors */
 
     cursor: pointer;
 

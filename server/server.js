@@ -108,6 +108,74 @@ const lobbies = new Map(); // lobbyId -> Lobby
 const socketToLobby = new Map(); // socket -> lobbyId
 let nextLobbyId = 1;
 
+// ---------------- Security: Sanitization + Rate Limits ----------------
+// HTML-escape to prevent XSS in any DOM-rendered strings on clients
+function escapeHtml(str) {
+    return str.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+function sanitizeText(input, maxLen = 240) {
+    if (typeof input !== 'string') return '';
+    // Remove control characters, cap length, then escape HTML entities
+    const cleaned = input.replace(/[\u0000-\u001F\u007F]/g, '');
+    const truncated = cleaned.slice(0, Math.max(0, maxLen));
+    return escapeHtml(truncated);
+}
+function sanitizeName(input) {
+    // More conservative cap for names; allow common punctuation; escape HTML anyway
+    return sanitizeText(input, 40);
+}
+
+// Token bucket rate limiting (per-socket and coarse per-IP)
+const RATE = {
+    chat: { refillPerSec: 3, capacity: 6 },     // typical users unaffected
+    update: { refillPerSec: 12, capacity: 24 }, // normal ~6-7/s fits comfortably
+};
+const IP_RATE = {
+    chat: { refillPerSec: 10, capacity: 20 },
+    update: { refillPerSec: 50, capacity: 100 },
+};
+
+const ipBuckets = new Map(); // ip -> { chat:{tokens,last}, update:{tokens,last} }
+const socketBuckets = new WeakMap(); // socket -> { chat:{tokens,last}, update:{tokens,last}, ip }
+
+function nowSec() { return Date.now() / 1000; }
+function getOrInitBucket(holder, key, cfg) {
+    let b = holder.get(key);
+    if (!b) {
+        b = { chat: { tokens: RATE.chat.capacity, last: nowSec() }, update: { tokens: RATE.update.capacity, last: nowSec() } };
+        holder.set(key, b);
+    }
+    return b;
+}
+function refill(bucket, cfg) {
+    const t = nowSec();
+    const elapsed = Math.max(0, t - bucket.last);
+    bucket.tokens = Math.min(cfg.capacity, bucket.tokens + elapsed * cfg.refillPerSec);
+    bucket.last = t;
+}
+function consume(type, socket) {
+    if (!(type === 'chat' || type === 'update')) return true; // don't rate-limit other controls
+    const sMeta = socketBuckets.get(socket);
+    if (!sMeta) return true;
+    const { ip } = sMeta;
+    // Per-socket
+    const sb = sMeta[type];
+    refill(sb, RATE[type]);
+    if (sb.tokens < 1) return false;
+    sb.tokens -= 1;
+    // Per-IP
+    const ipbAll = getOrInitBucket(ipBuckets, ip, IP_RATE);
+    const ipb = ipbAll[type];
+    refill(ipb, IP_RATE[type]);
+    if (ipb.tokens < 1) {
+        // rollback socket token consumption to be fair
+        sb.tokens = Math.min(RATE[type].capacity, sb.tokens + 1);
+        return false;
+    }
+    ipb.tokens -= 1;
+    return true;
+}
+
 // House lobby ownership maps (keyed by short owner slug)
 const houseOwnerToLobbyId = new Map(); // ownerSlug -> lobbyId
 const lobbyIdToHouseOwner = new Map(); // lobbyId -> ownerSlug
@@ -227,6 +295,14 @@ wss.on('connection', (socket, request) => {
     lobby.addClient(socket);
     socketToLobby.set(socket, lobby.id);
 
+    // Attach security meta (rate limiting)
+    const ip = (request.headers['x-forwarded-for']?.split(',')[0].trim()) || request.socket?.remoteAddress || 'unknown';
+    const init = { chat: { tokens: RATE.chat.capacity, last: nowSec() }, update: { tokens: RATE.update.capacity, last: nowSec() }, ip };
+    socketBuckets.set(socket, init);
+    if (!ipBuckets.has(ip)) {
+        ipBuckets.set(ip, { chat: { tokens: IP_RATE.chat.capacity, last: nowSec() }, update: { tokens: IP_RATE.update.capacity, last: nowSec() } });
+    }
+
     // If this is a house lobby, mark owner presence if applicable
     if (lobbyType === 'house') {
         const ownerSlug = lobbyIdToHouseOwner.get(lobby.id);
@@ -274,6 +350,21 @@ wss.on('connection', (socket, request) => {
         } catch (error) {
             console.error('Invalid JSON received:', error);
             return;
+        }
+
+        // Server-side input validation/sanitization and rate limiting
+        const type = message?.type;
+        if (type === 'chat') {
+            if (!consume('chat', socket)) return; // drop if rate-limited
+            const content = sanitizeText(message.content ?? '', 240);
+            if (!content) return; // drop empty after sanitize
+            message.content = content;
+        } else if (type === 'update') {
+            if (!consume('update', socket)) return; // drop if rate-limited
+            // Sanitize goblin.name if present
+            if (message.goblin && typeof message.goblin.name === 'string') {
+                message.goblin.name = sanitizeName(message.goblin.name);
+            }
         }
 
         // House-only: allow owner to switch the lobby mode between freedraw/quickdraw/guessinggame

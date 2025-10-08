@@ -27,6 +27,8 @@ export default defineConfig({
                 house: path.resolve(rootDir, 'house.html'),
                 shop: path.resolve(rootDir, 'shop.html'),
                 account: path.resolve(rootDir, 'account.html'),
+                tos: path.resolve(rootDir, 'tos.html'),
+                privacy: path.resolve(rootDir, 'privacy.html'),
             }
         }
     },

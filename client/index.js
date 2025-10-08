@@ -1,4 +1,5 @@
 import p5 from "p5";
+p5.disableFriendlyErrors = true; // Disable friendly errors for performance
 
 import Goblin from "./goblin.js";
 import Portal from "./portal.js";

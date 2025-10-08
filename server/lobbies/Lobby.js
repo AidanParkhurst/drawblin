@@ -60,6 +60,12 @@ class Lobby {
     handleMessage(socket, message) {
         // Handle different message types
         if (message.type === "update") {
+            // Defensive sanitation for goblin name if present (length/cntl chars only; HTML escaping handled in server.js)
+            if (message.goblin && typeof message.goblin.name === 'string') {
+                try {
+                    message.goblin.name = message.goblin.name.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 40);
+                } catch(_) {}
+            }
             this.users.set(socket, { id: message.goblin.id });
             // Broadcast updates to everyone else (exclude sender for position updates)
             this.broadcast(message, socket);
@@ -71,6 +77,10 @@ class Lobby {
             } else {
                 message.userId = "unknown";
             }
+            // Defensive sanitation for chat content (length/cntl chars only; HTML escaping handled in server.js)
+            if (typeof message.content === 'string') {
+                try { message.content = message.content.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 240); } catch(_) {}
+            } else { message.content = ''; }
             console.log(`Received chat message from ${message.userId} in lobby ${this.id}: ${message.content}`);
             // Broadcast chat to ALL including sender
             this.broadcast(message, null);

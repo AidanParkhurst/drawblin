@@ -156,6 +156,10 @@ class QuickDrawLobby extends Lobby {
 
             if (this.gameState === "voting") {
                 // In voting phase, check if the message is a vote
+                // Basic cap/clean; HTML escaping handled centrally in server.js
+                if (typeof message.content === 'string') {
+                    message.content = message.content.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 240);
+                } else { message.content = ''; }
                 var vote = this.getVoteFromMessage(message.content);
                 
                 if (!vote || message.userId === this.currentArtist) { // Normal chat message
@@ -183,6 +187,9 @@ class QuickDrawLobby extends Lobby {
                 this.broadcast({ type: "chat", userId: message.userId, content: "Voted!" });
             } else {
                 // Not voting: treat all chat as normal chat and broadcast to everyone
+                if (typeof message.content === 'string') {
+                    message.content = message.content.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 240);
+                } else { message.content = ''; }
                 this.broadcast(message, null);
                 console.log(`Quick draw lobby ${this.id} chat from ${message.userId}: ${message.content}`);
             }

@@ -249,9 +249,12 @@ class GuessingGameLobby extends Lobby {
             
             // In guessing game, check if chat message is a guess
             if (this.gameState === "drawing" && socket !== this.currentArtist) {
+                // Cap/clean before processing. HTML escaping is centrally handled in server.js
+                const safe = typeof message.content === 'string' ? message.content.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 240) : '';
+                message.content = safe;
                 console.log(`Guessing game lobby ${this.id} guess from ${message.userId}: ${message.content}`); 
-                // Phrase scoring: split guess into words, award points for each unique scorable word mentioned.
-                const cleaned = message.content.toLowerCase();
+                // Phrase scoring: split guess into words from the unescaped safe version
+                const cleaned = safe.toLowerCase();
                 const words = cleaned.match(/[a-zA-Z]+/g) || [];
                 let totalPointsEarned = 0;
                 if (!this.scores.has(socket)) this.scores.set(socket, 0);
@@ -324,7 +327,9 @@ class GuessingGameLobby extends Lobby {
                     this.sendTo(socket, { type: 'prompt_update', prompt: personalized });
                 } else {
                     // Regular chat broadcast only to others (no points scored)
-                    this.broadcast({ type: "chat", userId: message.userId, content: message.content }, null);
+                    // Ensure non-scoring chat message is capped/cleaned
+                    const safe2 = typeof message.content === 'string' ? message.content.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 240) : '';
+                    this.broadcast({ type: "chat", userId: message.userId, content: safe2 }, null);
                 }
 
                 // Check if all scorable words have been found by at least one player (excluding artist)

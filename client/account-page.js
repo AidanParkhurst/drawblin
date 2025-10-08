@@ -67,7 +67,7 @@ async function render() {
   const cancelBtn = ents?.has_premium ? el('button', { class: 'btn-outline', text: 'Cancel membership' }) : null;
   if (cancelBtn) {
     cancelBtn.addEventListener('click', () => {
-      alert('To cancel, use the link in your Stripe checkout email or contact support. In-app cancel API can be added later.');
+      alert('To cancel, use the link in your checkout email (from Stripe). Or email us at: support@drawbl.in');
     });
   }
   const memberRow = el('div', { class: 'account-card account-card--row account-row' }, [
