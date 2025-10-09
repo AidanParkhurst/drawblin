@@ -113,11 +113,7 @@ export async function recordCheckoutSessionIdentity(event) {
   const resolvedEmail = suppliedAccountEmail || baseEmail; // preference per requirement
   const { userId } = await resolveUserByEmail(supa, resolvedEmail);
 
-  console.log('Recording checkout session identity:', {
-    sessionId, paymentIntentId, amount, currency, createdUnix,
-    customerEmail: baseEmail, customerName: customer.name || null,
-    suppliedAccountEmail, resolvedEmail, userId
-  });
+  console.log(`Payments: recording session ${sessionId} (intent=${paymentIntentId || 'none'}, amount=${amount || 0} ${currency || ''}, email=${resolvedEmail || baseEmail || 'n/a'}, userId=${userId || 'n/a'})`);
   // Attempt to extract price IDs for entitlement mapping.
   // The raw event usually lacks expanded line_items; if absent try retrieving expanded session from Stripe.
   let priceIdsFromSession = [];

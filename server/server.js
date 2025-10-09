@@ -64,19 +64,20 @@ app.post('/webhook/stripe', async (req, res) => {
         switch (event.type) {
             case 'checkout.session.completed':
                 await recordCheckoutSessionIdentity(event);
-                console.log(`Stored identity for session ${event.data?.object?.id}`);
+                console.log(`Stripe: checkout.session.completed handled (session ${event.data?.object?.id})`);
                 break;
             case 'payment_intent.succeeded':
                 await markPaymentIntentSucceeded(event);
-                console.log(`Confirmed payment intent ${event.data?.object?.id}`);
+                console.log(`Stripe: payment_intent.succeeded handled (intent ${event.data?.object?.id})`);
                 break;
             case 'customer.subscription.deleted':
             case 'customer.subscription.updated':
                 await markSubscriptionCanceledOrUpdated(event);
-                console.log(`Processed subscription change ${event.type} for ${event.data?.object?.id}`);
+                console.log(`Stripe: subscription ${event.type} processed (${event.data?.object?.id})`);
                 break;
             default:
-                console.log('Unhandled Stripe event type:', event.type);
+                // Intentionally ignore unhandled Stripe event types in production
+                // console.debug('Unhandled Stripe event type:', event.type);
         }
     } catch (e) {
         console.error('Error processing Stripe event:', e?.message || e);
@@ -96,7 +97,7 @@ const wss = new WebSocketServer({
         const validPaths = ['/freedraw', '/quickdraw', '/guessinggame', '/house'];
         
         if (!validPaths.includes(pathname)) {
-            console.log(`Rejected connection to invalid path: ${pathname}`);
+            console.warn(`Rejected connection to invalid path: ${pathname}`);
             return false;
         }
         
@@ -217,7 +218,6 @@ function findOrCreateLobby(lobbyType = 'freedraw') {
     }
     
     lobbies.set(newLobby.id, newLobby);
-    console.log(`Created new ${lobbyType} lobby ${newLobby.id}`);
     return newLobby;
 }
 
@@ -271,7 +271,7 @@ wss.on('connection', (socket, request) => {
                 lobbies.set(lobby.id, lobby);
                 houseOwnerToLobbyId.set(ownerSlug, lobby.id);
                 lobbyIdToHouseOwner.set(lobby.id, ownerSlug);
-                console.log(`Created new house (freedraw) lobby ${lobby.id} for owner ${ownerSlug}`);
+                // House lobby created for owner; no verbose log in production
             }
         } else {
             // Guest can only join if the lobby exists AND owner is present
@@ -321,7 +321,7 @@ wss.on('connection', (socket, request) => {
         }
     }
 
-    console.log(`New client connected to ${lobbyType} lobby ${lobby.id} via ${pathname}`);
+    // Connection accepted; omit per-connection logs for production performance
 
     // If this is a house lobby, immediately inform the client of the current mode
     if (lobbyType === 'house') {
@@ -428,12 +428,12 @@ wss.on('connection', (socket, request) => {
                         ownerSocketsByLobby.delete(lobbyId);
                     }
                     lobbies.delete(lobbyId);
-                    console.log(`Removed empty lobby ${lobbyId}`);
+                    // Removed empty lobby; omit frequent log noise in production
                 }
             }
             socketToLobby.delete(socket);
         }
-        console.log('Client disconnected');
+        // Omit per-disconnect logs to reduce noise
     });
 });
 
@@ -466,7 +466,7 @@ function switchHouseLobbyType(oldLobby, targetType) {
     }
     // Announce mode change to clients so UI can adapt
     newLobby.broadcast({ type: 'house_mode', mode: targetType });
-    console.log(`House lobby ${id} switched to ${targetType}`);
+    // House lobby mode switched; avoid chatty logs in production
 }
 
 server.listen(PORT, () => {

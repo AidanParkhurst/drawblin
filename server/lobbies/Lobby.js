@@ -9,7 +9,6 @@ class Lobby {
 
     addClient(socket) {
         this.clients.add(socket);
-        console.log(`Client added to lobby ${this.id}. Lobby size: ${this.clients.size}/${this.maxPlayers}`);
     }
 
     removeClient(socket) {
@@ -18,7 +17,6 @@ class Lobby {
         }
         this.clients.delete(socket);
         this.users.delete(socket);
-        console.log(`Client removed from lobby ${this.id}. Lobby size: ${this.clients.size}/${this.maxPlayers}`);
         if (this.onClientRemoved) {
             try { this.onClientRemoved(socket); } catch(e){ console.error(e); }
         }
@@ -81,7 +79,6 @@ class Lobby {
             if (typeof message.content === 'string') {
                 try { message.content = message.content.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 240); } catch(_) {}
             } else { message.content = ''; }
-            console.log(`Received chat message from ${message.userId} in lobby ${this.id}: ${message.content}`);
             // Broadcast chat to ALL including sender
             this.broadcast(message, null);
             return;

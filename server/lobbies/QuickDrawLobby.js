@@ -75,7 +75,6 @@ class QuickDrawLobby extends Lobby {
                 this.gameState = 'drawing';
                 this.timer = this.drawingTime; // Set timer to drawing time
                 this.broadcast({ type: "game_state", state: "drawing", prompt: this.prompt, time: this.drawingTime });
-                console.log(`Quick draw lobby ${this.id} started with prompt: ${this.prompt}`);
             }
         } else if (this.gameState === 'drawing') {
             if (this.timer <= 0) { // Transition immediately when timer ends (no extra hidden delay)
@@ -86,7 +85,6 @@ class QuickDrawLobby extends Lobby {
                 this.gameState = 'pre-voting';
                 this.timer = this.preVotingTime; // Set timer to pre-voting time
                 this.broadcast({ type: "game_state", state: "pre-voting", time: this.preVotingTime });
-                console.log(`Quick draw lobby ${this.id} finished drawing phase. Now voting.`);
             }
         } else if (this.gameState === 'pre-voting') {
             if (this.timer <= 0) { // Wait 5 seconds before starting voting
@@ -95,7 +93,6 @@ class QuickDrawLobby extends Lobby {
                 this.currentArtist = Array.from(this.finishedDrawings.keys())[0] || null;
                 this.timer = this.votingTime; // Set timer to voting time
                 this.broadcast({ type: "game_state", state: "voting", artistId: this.currentArtist, time: this.votingTime });
-                console.log(`Quick draw lobby ${this.id} started voting phase for artist: ${this.currentArtist}`);
             }
         } else if (this.gameState === 'voting') {
             if (this.timer <= 0) {
@@ -106,7 +103,6 @@ class QuickDrawLobby extends Lobby {
                     this.currentArtist = artistKeys[currentIndex + 1];
                     this.timer = this.votingTime; // Reset timer for next artist
                     this.broadcast({ type: "game_state", state: "voting", artistId: this.currentArtist, time: this.votingTime });
-                    console.log(`Quick draw lobby ${this.id} voting for next artist: ${this.currentArtist}`);
                 } else {
                     // End voting phase
                     this.gameState = 'finished';
@@ -117,7 +113,6 @@ class QuickDrawLobby extends Lobby {
                         return { artistId, votes: data.votes.length, averageVote };
                     }).sort((a, b) => b.averageVote - a.averageVote); // Sort by average vote descending
                     this.broadcast({ type: "game_state", state: "finished", results: this.sortedResults, time: this.waitingTime });
-                    console.log(`Quick draw lobby ${this.id} finished. Results:`, this.sortedResults);
                     this.timer = this.celebrationTime; // Set timer for celebration
                 }
             }
@@ -164,7 +159,6 @@ class QuickDrawLobby extends Lobby {
                 
                 if (!vote || message.userId === this.currentArtist) { // Normal chat message
                     this.broadcast(message, null); // include sender for chat
-                    console.log(`Quick draw lobby ${this.id} chat from ${message.userId}: ${message.content}`);
                     return;
                 }
 
@@ -191,7 +185,6 @@ class QuickDrawLobby extends Lobby {
                     message.content = message.content.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 240);
                 } else { message.content = ''; }
                 this.broadcast(message, null);
-                console.log(`Quick draw lobby ${this.id} chat from ${message.userId}: ${message.content}`);
             }
         }
     }
@@ -214,8 +207,7 @@ class QuickDrawLobby extends Lobby {
         this.prompt = "";
         this.finishedDrawings.clear();
         this.sortedResults = [];
-        this.broadcast({ type: "game_state", state: "waiting", time: this.timer });
-        console.log(`Quick draw lobby ${this.id} has been reset for a new game.`);
+    this.broadcast({ type: "game_state", state: "waiting", time: this.timer });
     }
 
     startNextRound() {
@@ -228,7 +220,6 @@ class QuickDrawLobby extends Lobby {
         this.gameState = 'drawing';
         this.timer = this.drawingTime;
         this.broadcast({ type: 'game_state', state: 'drawing', prompt: this.prompt, time: this.drawingTime });
-        console.log(`Quick draw lobby ${this.id} starting next round with prompt: ${this.prompt}`);
     }
 
     pickNewPrompt() {

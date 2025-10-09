@@ -86,7 +86,6 @@ class GuessingGameLobby extends Lobby {
             // Broadcast full prompt (bracket everything to indicate reveal so client colors full phrase)
             const fullyBracketed = this.prompt_tokens.map(t => t.type === 'literal' ? t.value : `[${t.value}]`).join(' ');
             this.broadcast({ type: "game_state", state: "reveal", prompt: fullyBracketed, artistId: this.getUserId(this.currentArtist), time: this.revealTime });
-                console.log(`Guessing game lobby ${this.id} prompt revealed: ${this.prompt}`);
             }
         } else if (this.gameState === 'reveal') {
             if (this.timer <= 0) {
@@ -111,7 +110,6 @@ class GuessingGameLobby extends Lobby {
                     // Reset waiting timer based on current player count (scaled)
                     this.timer = this.desiredWaitForPlayers();
                     this.broadcastWaitingWithScores();
-                    console.log(`Guessing game lobby ${this.id} returned to waiting (no scoreboard phase).`);
                 }
             }
         }
@@ -154,7 +152,7 @@ class GuessingGameLobby extends Lobby {
             if (client === artistSocket) continue;
             this.sendTo(client, { type: "game_state", state: "drawing", prompt: masked, time: this.drawingTime, artistId: artistId });
         }
-        console.log(`Guessing game lobby ${this.id} started with artist: ${artistId} and prompt: ${this.prompt}`);
+    // Artist and prompt set; omit verbose start log in production
     }
 
     generatePhrasePrompt() {
@@ -252,7 +250,7 @@ class GuessingGameLobby extends Lobby {
                 // Cap/clean before processing. HTML escaping is centrally handled in server.js
                 const safe = typeof message.content === 'string' ? message.content.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 240) : '';
                 message.content = safe;
-                console.log(`Guessing game lobby ${this.id} guess from ${message.userId}: ${message.content}`); 
+                // Omit per-guess logging for performance
                 // Phrase scoring: split guess into words from the unescaped safe version
                 const cleaned = safe.toLowerCase();
                 const words = cleaned.match(/[a-zA-Z]+/g) || [];
@@ -344,11 +342,9 @@ class GuessingGameLobby extends Lobby {
                     this.timer = this.revealTime;
                     const fullyBracketed = this.prompt_tokens.map(t => t.type === 'literal' ? t.value : `[${t.value}]`).join(' ');
                     this.broadcast({ type: "game_state", state: "reveal", prompt: fullyBracketed, artistId: this.getUserId(this.currentArtist), time: this.revealTime });
-                    console.log(`Guessing game lobby ${this.id} all words discovered, revealing prompt: ${this.prompt}`);
                 }
             } else {
                 // Normal chat when not in drawing phase (include sender)
-                console.log(`Guessing game lobby ${this.id} chat from ${message.userId}: ${message.content}`);
                 this.broadcast(message, null);
             }
         }
