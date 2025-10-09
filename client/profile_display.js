@@ -230,7 +230,7 @@ class ProfileDisplay {
                 } catch (_) { /* no-op if CustomEvent unavailable */ }
             }
             
-            sendMessage({ type: 'update', goblin: this.targetGoblin });
+            sendMessage({ type: 'update', g: { i: this.targetGoblin.id, n: this.targetGoblin.name } });
         }
     }
     
@@ -453,8 +453,13 @@ class ProfileDisplay {
                 you.petKey = chosenKey;
             }
             // Immediately sync to server so others see pet (or its removal)
-            const outbound = { id: you.id, x: you.x, y: you.y, cursor: you.cursor, lines: you.lines, color: you.color, name: you.name, shape: you.shape, ui_color: you.ui_color, tool: you.tool, petKey: you.petKey };
-            sendMessage({ type: 'update', goblin: outbound });
+            const g = { i: you.id, x: you.x, y: you.y, c: { x: you.cursor.x, y: you.cursor.y }, co: [you.color[0]|0, you.color[1]|0, you.color[2]|0], n: you.name, s: you.shape, ui: [you.ui_color[0]|0, you.ui_color[1]|0, you.ui_color[2]|0], t: you.tool, p: you.petKey };
+            // Only include lines on structural change
+            if (!window.__lastLineLen || window.__lastLineLen !== you.lines.length) {
+                g.l = you.lines.map(seg => ({ sx: Array.isArray(seg.start?._values) ? seg.start._values[0] : (seg.start?.x ?? 0), sy: Array.isArray(seg.start?._values) ? seg.start._values[1] : (seg.start?.y ?? 0), ex: Array.isArray(seg.end?._values) ? seg.end._values[0] : (seg.end?.x ?? 0), ey: Array.isArray(seg.end?._values) ? seg.end._values[1] : (seg.end?.y ?? 0), w: seg.weight|0, co: [seg.color[0]|0, seg.color[1]|0, seg.color[2]|0] }));
+                window.__lastLineLen = you.lines.length;
+            }
+            sendMessage({ type: 'update', g });
         } catch (_) { /* ignore */ }
     }
     cycleBling(dir) {
@@ -487,7 +492,7 @@ class ProfileDisplay {
             if (!this.shapes.includes(currentShape)) {
                 you.shape = this.baseShapes[0];
                 you.setSize?.();
-                try { sendMessage({ type: 'update', goblin: you }); } catch {}
+                try { sendMessage({ type: 'update', g: { i: you.id, co: [you.color[0]|0, you.color[1]|0, you.color[2]|0], ui: [you.ui_color[0]|0, you.ui_color[1]|0, you.ui_color[2]|0] } }); } catch {}
             }
             this._entitlementsLoaded = true;
         } catch (e) {
@@ -519,7 +524,7 @@ class ProfileDisplay {
         this.targetGoblin.shape = this.shapes[nextIndex];
         // Use goblin instance method for sizing consistency
         if (typeof this.targetGoblin.setSize === 'function') this.targetGoblin.setSize();
-        sendMessage({ type: 'update', goblin: this.targetGoblin });
+    sendMessage({ type: 'update', g: { i: this.targetGoblin.id, s: this.targetGoblin.shape } });
     }
 }
 

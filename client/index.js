@@ -399,7 +399,8 @@ window.setup = async() => {
         }
         if (name && name !== you.name) {
             you.name = name;
-            sendMessage({ type: 'update', goblin: you });
+            // Send compact update (name only)
+            sendMessage({ type: 'update', g: { i: you.id, n: you.name } });
         }
         // Auth changed could add/remove home portal
         ensureHomePortal();
@@ -411,7 +412,7 @@ window.setup = async() => {
         if (!you || !newName) return;
         if (newName !== you.name) {
             you.name = newName;
-            sendMessage({ type: 'update', goblin: you });
+            sendMessage({ type: 'update', g: { i: you.id, n: you.name } });
         }
     });
 
@@ -554,25 +555,36 @@ window.draw = () => {
 
     heartbeat_timer += deltaTime;
     if (heartbeat_timer >= heartbeat && ws && ws.readyState === WebSocket.OPEN) {
-        // Send the updated goblin state to the server
-        // Shallow clone to avoid sending large circular references; include lines & petKey explicitly
-        const outbound = { 
-            id: you.id,
-            x: you.x,
-            y: you.y,
-            cursor: you.cursor,
-            lines: you.lines,
-            color: you.color,
-            name: you.name,
-            shape: you.shape,
-            ui_color: you.ui_color,
-            tool: you.tool,
-            petKey: you.petKey || null
-        };
-        sendMessage({
-            type: "update",
-            goblin: outbound
-        });
+        // Compact, sparse updates: send only necessary fields using short keys.
+        // Schema g: { i:id, x, y, c:{x,y}, l:[{sx,sy,ex,ey,w,co:[r,g,b]}], co:[r,g,b], n, s, ui:[r,g,b], t, p:petKey|null }
+        // Only include arrays/objects if present to keep JSON small.
+        const g = { i: you.id, x: you.x, y: you.y };
+        if (you && you.cursor && typeof you.cursor.x === 'number' && typeof you.cursor.y === 'number') g.c = { x: you.cursor.x, y: you.cursor.y };
+        if (Array.isArray(you.color)) g.co = [you.color[0]|0, you.color[1]|0, you.color[2]|0];
+        if (Array.isArray(you.ui_color)) g.ui = [you.ui_color[0]|0, you.ui_color[1]|0, you.ui_color[2]|0];
+        if (you.tool) g.t = you.tool;
+        if (you.name) g.n = you.name;
+        if (you.shape) g.s = you.shape;
+        if (you.petKey) g.p = you.petKey;
+        // Lines: send only when changed since last send (length changed)
+        if (!window.__lastLineLen || window.__lastLineLen !== you.lines.length) {
+            const ls = [];
+            for (let i = 0; i < you.lines.length; i++) {
+                const seg = you.lines[i];
+                if (!seg) continue;
+                const sx = Array.isArray(seg.start?._values) ? seg.start._values[0] : (seg.start?.x ?? 0);
+                const sy = Array.isArray(seg.start?._values) ? seg.start._values[1] : (seg.start?.y ?? 0);
+                const ex = Array.isArray(seg.end?._values) ? seg.end._values[0] : (seg.end?.x ?? sx);
+                const ey = Array.isArray(seg.end?._values) ? seg.end._values[1] : (seg.end?.y ?? sy);
+                const item = { sx, sy, ex, ey };
+                if (typeof seg.weight === 'number') item.w = seg.weight|0;
+                if (Array.isArray(seg.color)) item.co = [seg.color[0]|0, seg.color[1]|0, seg.color[2]|0];
+                ls.push(item);
+            }
+            g.l = ls;
+            window.__lastLineLen = you.lines.length;
+        }
+        sendMessage({ type: 'update', g });
         heartbeat_timer = 0;
     }
 }
@@ -868,39 +880,53 @@ function onmessage(event) {
             }
             break;
         case "update":
-            // Update the goblin's position and state based on the received data
-            const goblin = goblins.find(g => g.id === data.goblin.id);
+            // Support both legacy full shape (goblin) and compact shape (g)
+            const payload = data.goblin ? data.goblin : (data.g ? {
+                id: data.g.i,
+                x: data.g.x, y: data.g.y,
+                cursor: data.g.c,
+                lines: data.g.l,
+                color: data.g.co,
+                name: data.g.n,
+                shape: data.g.s,
+                ui_color: data.g.ui,
+                tool: data.g.t,
+                petKey: data.g.p
+            } : null);
+            if (!payload || payload.id == null) break;
+            // Detect whether the original message explicitly contained lines
+            const __hadLines = (data.goblin && Object.prototype.hasOwnProperty.call(data.goblin, 'lines')) || (data.g && Object.prototype.hasOwnProperty.call(data.g, 'l'));
+            let goblin = goblins.find(g => g.id === payload.id);
             if (!goblin) {
                 // If the goblin doesn't exist, create a new one
-                const color = Array.isArray(data.goblin.color) && data.goblin.color.length===3 ? data.goblin.color : randomPaletteColor();
-                const newcomer = new Goblin(data.goblin.x, data.goblin.y, color, false, data.goblin.id, data.goblin.shape, data.goblin.name || '');
+                const color = Array.isArray(payload.color) && payload.color.length===3 ? payload.color : randomPaletteColor();
+                const newcomer = new Goblin(payload.x, payload.y, color, false, payload.id, payload.shape, payload.name || '');
                 try { newcomer.triggerAppear?.(); } catch {}
                 goblins.push(newcomer);
                 // Attach pet if provided and valid
-                if (data.goblin.petKey && typeof data.goblin.petKey === 'string') {
-                    try { const p = new Pet(newcomer, data.goblin.petKey); pets.push(p); newcomer.petKey = data.goblin.petKey; } catch {}
+                if (payload.petKey && typeof payload.petKey === 'string') {
+                    try { const p = new Pet(newcomer, payload.petKey); pets.push(p); newcomer.petKey = payload.petKey; } catch {}
                 }
                 // Continue into the normal goblin update path by assigning
                 // so we apply cursor, lines, etc.
                 goblin = newcomer;
             }
             if (goblin) {
-                // TODO: Prob shouldn't be accessing _values, but otherwise it doesnt work
-                goblin.x = data.goblin.x;
-                goblin.y = data.goblin.y;
-                if (data.goblin.cursor && Array.isArray(data.goblin.cursor._values)) {
-                    goblin.cursor = createVector(data.goblin.cursor._values[0], data.goblin.cursor._values[1]);
-                } else if (data.goblin.cursor && typeof data.goblin.cursor.x === 'number' && typeof data.goblin.cursor.y === 'number') {
-                    goblin.cursor = createVector(data.goblin.cursor.x, data.goblin.cursor.y);
+                goblin.x = payload.x;
+                goblin.y = payload.y;
+                if (payload.cursor && Array.isArray(payload.cursor._values)) {
+                    goblin.cursor = createVector(payload.cursor._values[0], payload.cursor._values[1]);
+                } else if (payload.cursor && typeof payload.cursor.x === 'number' && typeof payload.cursor.y === 'number') {
+                    goblin.cursor = createVector(payload.cursor.x, payload.cursor.y);
                 }
-                goblin.color = (Array.isArray(data.goblin.color) && data.goblin.color.length===3) ? data.goblin.color : goblin.color;
-                goblin.ui_color = data.goblin.ui_color;
-                goblin.tool = data.goblin.tool || 'brush'; // Update tool, default to brush if not provided
-                goblin.name = data.goblin.name || goblin.name || '';
-                goblin.shape = data.goblin.shape || goblin.shape || 'manny';
+                goblin.color = (Array.isArray(payload.color) && payload.color.length===3) ? payload.color : goblin.color;
+                if (Array.isArray(payload.ui_color)) goblin.ui_color = payload.ui_color; else if (Array.isArray(payload.ui)) goblin.ui_color = payload.ui;
+                goblin.tool = payload.tool || payload.t || 'brush';
+                goblin.name = payload.name || payload.n || goblin.name || '';
+                goblin.shape = payload.shape || payload.s || goblin.shape || 'manny';
                 goblin.setSize();
                 // Handle pet changes (create/update/remove)
-                const incomingPet = data.goblin.petKey || null;
+                const incomingPet = payload.petKey || payload.p || null;
                 if (incomingPet && typeof incomingPet === 'string') {
                     if (!goblin.petKey || goblin.petKey !== incomingPet) {
                         // Replace or create
@@ -919,19 +945,23 @@ function onmessage(event) {
                     if (idx !== -1) pets.splice(idx, 1);
                     goblin.petKey = null;
                 }
-                // Rebuild remote user's lines and sync to global registry preserving order
-                const incomingLines = Array.isArray(data.goblin.lines) ? data.goblin.lines : [];
-                const rebuilt = [];
-                for (let i = 0; i < incomingLines.length; i++) {
-                    const seg = incomingLines[i];
-                    const sx = (seg.start && Array.isArray(seg.start._values)) ? seg.start._values[0] : (seg.start && typeof seg.start.x === 'number' ? seg.start.x : 0);
-                    const sy = (seg.start && Array.isArray(seg.start._values)) ? seg.start._values[1] : (seg.start && typeof seg.start.y === 'number' ? seg.start.y : 0);
-                    const ex = (seg.end && Array.isArray(seg.end._values)) ? seg.end._values[0] : (seg.end && typeof seg.end.x === 'number' ? seg.end.x : sx);
-                    const ey = (seg.end && Array.isArray(seg.end._values)) ? seg.end._values[1] : (seg.end && typeof seg.end.y === 'number' ? seg.end.y : sy);
-                    rebuilt.push(new Line(createVector(sx, sy), createVector(ex, ey), seg.color, seg.weight));
+                // Rebuild remote user's lines only if the update explicitly included them; otherwise preserve existing.
+                if (__hadLines) {
+                    const incomingLines = Array.isArray(payload.lines) ? payload.lines : (Array.isArray(payload.l) ? payload.l : []);
+                    const rebuilt = [];
+                    for (let i = 0; i < incomingLines.length; i++) {
+                        const seg = incomingLines[i];
+                        const sx = seg.sx != null ? seg.sx : ((seg.start && Array.isArray(seg.start._values)) ? seg.start._values[0] : (seg.start && typeof seg.start.x === 'number' ? seg.start.x : 0));
+                        const sy = seg.sy != null ? seg.sy : ((seg.start && Array.isArray(seg.start._values)) ? seg.start._values[1] : (seg.start && typeof seg.start.y === 'number' ? seg.start.y : 0));
+                        const ex = seg.ex != null ? seg.ex : ((seg.end && Array.isArray(seg.end._values)) ? seg.end._values[0] : (seg.end && typeof seg.end.x === 'number' ? seg.end.x : sx));
+                        const ey = seg.ey != null ? seg.ey : ((seg.end && Array.isArray(seg.end._values)) ? seg.end._values[1] : (seg.end && typeof seg.end.y === 'number' ? seg.end.y : sy));
+                        const col = Array.isArray(seg.co) ? seg.co : seg.color;
+                        const w = seg.w != null ? seg.w : seg.weight;
+                        rebuilt.push(new Line(createVector(sx, sy), createVector(ex, ey), col, w));
+                    }
+                    goblin.lines = rebuilt;
+                    try { __syncOwnerLines(goblin.id, rebuilt); } catch {}
                 }
-                goblin.lines = rebuilt;
-                try { __syncOwnerLines(goblin.id, rebuilt); } catch {}
             }
             break;
         case "user_left":

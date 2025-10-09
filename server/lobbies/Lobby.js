@@ -60,11 +60,13 @@ class Lobby {
         if (message.type === "update") {
             // Defensive sanitation for goblin name if present (length/cntl chars only; HTML escaping handled in server.js)
             if (message.goblin && typeof message.goblin.name === 'string') {
-                try {
-                    message.goblin.name = message.goblin.name.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 40);
-                } catch(_) {}
+                try { message.goblin.name = message.goblin.name.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 40); } catch(_) {}
+            } else if (message.g && typeof message.g.n === 'string') {
+                try { message.g.n = message.g.n.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 40); } catch(_) {}
             }
-            this.users.set(socket, { id: message.goblin.id });
+            // Track user id from either full or compact shape
+            const gid = (message.goblin && message.goblin.id != null) ? message.goblin.id : (message.g && message.g.i != null ? message.g.i : null);
+            if (gid != null) this.users.set(socket, { id: gid });
             // Broadcast updates to everyone else (exclude sender for position updates)
             this.broadcast(message, socket);
             return;

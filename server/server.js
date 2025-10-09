@@ -364,6 +364,8 @@ wss.on('connection', (socket, request) => {
             // Sanitize goblin.name if present
             if (message.goblin && typeof message.goblin.name === 'string') {
                 message.goblin.name = sanitizeName(message.goblin.name);
+            } else if (message.g && typeof message.g.n === 'string') {
+                message.g.n = sanitizeName(message.g.n);
             }
         }
 
