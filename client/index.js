@@ -66,6 +66,137 @@ let homePortal = null;
 let hasInput = false;
 let pets = [];
 
+// Line packing config
+const DEFAULT_WEIGHT = 5;               // common brush weight
+const USE_COMPACT_LINES = true;         // feature flag for compact wire format
+let __newPlayersSinceLastSend = 0;      // count newcomers observed since our last line send
+
+// Helpers: tiny base64 <-> bytes (Uint8Array)
+function __bytesToBase64(bytes) {
+    let binary = '';
+    const len = bytes.length;
+    for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+}
+function __base64ToBytes(b64) {
+    if (!b64 || typeof b64 !== 'string') return new Uint8Array(0);
+    const binary = atob(b64);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i) & 0xFF;
+    return bytes;
+}
+
+// Helpers: color equality and safe rounding for points
+function __colorsEq(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    return a.length === 3 && b.length === 3 && a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+}
+function __ptEq(ax, ay, bx, by) { return ax === bx && ay === by; }
+
+// Pack lines into a compact byte stream (base64) grouped as polylines by shared style and connectivity
+// Format per group:
+//   flags: 1 byte (bit0=hasColor, bit1=hasWeight)
+//   [r,g,b]: 3 bytes if hasColor
+//   [w]: 1 byte if hasWeight
+//   count: 1 byte (number of points in this polyline, 2..255)
+//   points: count * (x:uint16 LE, y:uint16 LE)
+function encodeLinesCompact(lines, ownerColor) {
+    if (!Array.isArray(lines) || lines.length === 0) return '';
+    const out = [];
+    let curColor = null, curWeight = null;
+    let points = [];
+
+    const flush = () => {
+        if (points.length < 2) { points.length = 0; return; }
+        // If too many points for one group, chunk into 255 max per group; repeat flags/style for each chunk
+        let idx = 0;
+        while (idx < points.length) {
+            const hasColor = !__colorsEq(curColor, ownerColor);
+            const hasWeight = (curWeight|0) !== (DEFAULT_WEIGHT|0);
+            let flags = 0;
+            if (hasColor) flags |= 1;
+            if (hasWeight) flags |= 2;
+            out.push(flags & 0xFF);
+            if (hasColor) { out.push(curColor[0]&0xFF, curColor[1]&0xFF, curColor[2]&0xFF); }
+            if (hasWeight) { out.push((curWeight|0) & 0xFF); }
+            const remaining = points.length - idx;
+            const take = Math.min(255, remaining);
+            out.push(take & 0xFF);
+            for (let i = 0; i < take; i++) {
+                const p = points[idx + i];
+                const x = Math.max(0, Math.min(65535, Math.round(p.x)));
+                const y = Math.max(0, Math.min(65535, Math.round(p.y)));
+                out.push(x & 0xFF, (x>>>8) & 0xFF, y & 0xFF, (y>>>8) & 0xFF);
+            }
+            idx += take;
+        }
+        points.length = 0;
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+        const seg = lines[i];
+        if (!seg) continue;
+        const col = Array.isArray(seg.color) ? seg.color : (Array.isArray(ownerColor) ? ownerColor : [0,0,0]);
+        const w = typeof seg.weight === 'number' ? (seg.weight|0) : DEFAULT_WEIGHT;
+        const sx = Array.isArray(seg.start?._values) ? seg.start._values[0] : (seg.start?.x ?? 0);
+        const sy = Array.isArray(seg.start?._values) ? seg.start._values[1] : (seg.start?.y ?? 0);
+        const ex = Array.isArray(seg.end?._values) ? seg.end._values[0] : (seg.end?.x ?? sx);
+        const ey = Array.isArray(seg.end?._values) ? seg.end._values[1] : (seg.end?.y ?? sy);
+
+        const sameStyle = curColor && __colorsEq(col, curColor) && (w === curWeight);
+        const continues = sameStyle && points.length > 0 && __ptEq(points[points.length-1].x, points[points.length-1].y, Math.round(sx), Math.round(sy));
+
+        if (!sameStyle || !continues) {
+            // Flush previous polyline
+            flush();
+            curColor = [col[0]|0, col[1]|0, col[2]|0];
+            curWeight = w;
+            points.push({ x: Math.round(sx), y: Math.round(sy) });
+        }
+        points.push({ x: Math.round(ex), y: Math.round(ey) });
+        // If point list is getting very large, proactively flush to keep count within 255 when next segment doesn't continue
+        if (points.length >= 255) {
+            flush();
+        }
+    }
+    flush();
+    return __bytesToBase64(Uint8Array.from(out));
+}
+
+// Unpack compact base64 back into a list of Line objects
+function decodeLinesCompact(b64, ownerColor) {
+    const bytes = __base64ToBytes(b64);
+    const res = [];
+    if (!bytes.length) return res;
+    let i = 0;
+    let curColor = Array.isArray(ownerColor) ? ownerColor.slice(0,3) : [0,0,0];
+    let curWeight = DEFAULT_WEIGHT;
+    while (i < bytes.length) {
+        const flags = bytes[i++];
+        const hasColor = (flags & 1) !== 0;
+        const hasWeight = (flags & 2) !== 0;
+        if (hasColor) { curColor = [bytes[i++]|0, bytes[i++]|0, bytes[i++]|0]; }
+        if (hasWeight) { curWeight = bytes[i++]|0; }
+        // One or more count blocks can follow for this style. We stop when next byte looks like a flags start (heuristic is hard),
+        // so we instead read exactly one block per style emission as encoded above. Our encoder repeats flags per style chunk, so read one block here.
+        const count = bytes[i++]|0;
+        const pts = [];
+        for (let k = 0; k < count; k++) {
+            if (i + 3 >= bytes.length) { i = bytes.length; break; }
+            const x = bytes[i++] | (bytes[i++] << 8);
+            const y = bytes[i++] | (bytes[i++] << 8);
+            pts.push({ x, y });
+        }
+        for (let p = 1; p < pts.length; p++) {
+            const s = createVector(pts[p-1].x, pts[p-1].y);
+            const e = createVector(pts[p].x, pts[p].y);
+            res.push(new Line(s, e, curColor, curWeight));
+        }
+    }
+    return res;
+}
+
 // --- Global line ordering (for collaborative drawing) ---
 // We keep a global append-only list of line segments in the order they were first seen.
 // Each segment gets a stable key per owner so we can de-duplicate across network heartbeats
@@ -566,25 +697,37 @@ window.draw = () => {
         if (you.name) g.n = you.name;
         if (you.shape) g.s = you.shape;
         if (you.petKey) g.p = you.petKey;
-        // Lines: send only when changed since last send (length changed)
-        if (!window.__lastLineLen || window.__lastLineLen !== you.lines.length) {
-            const ls = [];
-            for (let i = 0; i < you.lines.length; i++) {
-                const seg = you.lines[i];
-                if (!seg) continue;
-                const sx = Array.isArray(seg.start?._values) ? seg.start._values[0] : (seg.start?.x ?? 0);
-                const sy = Array.isArray(seg.start?._values) ? seg.start._values[1] : (seg.start?.y ?? 0);
-                const ex = Array.isArray(seg.end?._values) ? seg.end._values[0] : (seg.end?.x ?? sx);
-                const ey = Array.isArray(seg.end?._values) ? seg.end._values[1] : (seg.end?.y ?? sy);
-                const item = { sx, sy, ex, ey };
-                if (typeof seg.weight === 'number') item.w = seg.weight|0;
-                if (Array.isArray(seg.color)) item.co = [seg.color[0]|0, seg.color[1]|0, seg.color[2]|0];
-                ls.push(item);
+        // Lines: send when changed since last send (length changed) OR a newcomer joined since last send
+        let didIncludeLines = false;
+        const needResendForJoin = (__newPlayersSinceLastSend > 0) && you.lines && you.lines.length > 0;
+        if (!window.__lastLineLen || window.__lastLineLen !== you.lines.length || needResendForJoin) {
+            if (USE_COMPACT_LINES) {
+                const packed = encodeLinesCompact(you.lines, you.color);
+                g.lc = packed; // compact base64 payload
+                didIncludeLines = true;
+            } else {
+                const ls = [];
+                for (let i = 0; i < you.lines.length; i++) {
+                    const seg = you.lines[i];
+                    if (!seg) continue;
+                    const sx = Array.isArray(seg.start?._values) ? seg.start._values[0] : (seg.start?.x ?? 0);
+                    const sy = Array.isArray(seg.start?._values) ? seg.start._values[1] : (seg.start?.y ?? 0);
+                    const ex = Array.isArray(seg.end?._values) ? seg.end._values[0] : (seg.end?.x ?? sx);
+                    const ey = Array.isArray(seg.end?._values) ? seg.end._values[1] : (seg.end?.y ?? sy);
+                    const item = { sx, sy, ex, ey };
+                    if (typeof seg.weight === 'number') item.w = seg.weight|0;
+                    if (Array.isArray(seg.color)) item.co = [seg.color[0]|0, seg.color[1]|0, seg.color[2]|0];
+                    ls.push(item);
+                }
+                g.l = ls; // legacy verbose
+                didIncludeLines = true;
             }
-            g.l = ls;
             window.__lastLineLen = you.lines.length;
         }
         sendMessage({ type: 'update', g });
+        if (didIncludeLines && __newPlayersSinceLastSend > 0) {
+            __newPlayersSinceLastSend = 0; // we've satisfied the resend requirement for late joiners
+        }
         heartbeat_timer = 0;
     }
 }
@@ -895,7 +1038,8 @@ function onmessage(event) {
             } : null);
             if (!payload || payload.id == null) break;
             // Detect whether the original message explicitly contained lines
-            const __hadLines = (data.goblin && Object.prototype.hasOwnProperty.call(data.goblin, 'lines')) || (data.g && Object.prototype.hasOwnProperty.call(data.g, 'l'));
+            const __hadLines = (data.goblin && Object.prototype.hasOwnProperty.call(data.goblin, 'lines'))
+                || (data.g && (Object.prototype.hasOwnProperty.call(data.g, 'l') || Object.prototype.hasOwnProperty.call(data.g, 'lc')));
             let goblin = goblins.find(g => g.id === payload.id);
             if (!goblin) {
                 // If the goblin doesn't exist, create a new one
@@ -903,6 +1047,10 @@ function onmessage(event) {
                 const newcomer = new Goblin(payload.x, payload.y, color, false, payload.id, payload.shape, payload.name || '');
                 try { newcomer.triggerAppear?.(); } catch {}
                 goblins.push(newcomer);
+                // A new player joined; request that we resend our lines on next heartbeat so they see existing drawings
+                if (you && you.id !== newcomer.id && you.lines && you.lines.length > 0) {
+                    __newPlayersSinceLastSend += 1;
+                }
                 // Attach pet if provided and valid
                 if (payload.petKey && typeof payload.petKey === 'string') {
                     try { const p = new Pet(newcomer, payload.petKey); pets.push(p); newcomer.petKey = payload.petKey; } catch {}
@@ -947,17 +1095,23 @@ function onmessage(event) {
                 }
                 // Rebuild remote user's lines only if the update explicitly included them; otherwise preserve existing.
                 if (__hadLines) {
-                    const incomingLines = Array.isArray(payload.lines) ? payload.lines : (Array.isArray(payload.l) ? payload.l : []);
-                    const rebuilt = [];
-                    for (let i = 0; i < incomingLines.length; i++) {
-                        const seg = incomingLines[i];
-                        const sx = seg.sx != null ? seg.sx : ((seg.start && Array.isArray(seg.start._values)) ? seg.start._values[0] : (seg.start && typeof seg.start.x === 'number' ? seg.start.x : 0));
-                        const sy = seg.sy != null ? seg.sy : ((seg.start && Array.isArray(seg.start._values)) ? seg.start._values[1] : (seg.start && typeof seg.start.y === 'number' ? seg.start.y : 0));
-                        const ex = seg.ex != null ? seg.ex : ((seg.end && Array.isArray(seg.end._values)) ? seg.end._values[0] : (seg.end && typeof seg.end.x === 'number' ? seg.end.x : sx));
-                        const ey = seg.ey != null ? seg.ey : ((seg.end && Array.isArray(seg.end._values)) ? seg.end._values[1] : (seg.end && typeof seg.end.y === 'number' ? seg.end.y : sy));
-                        const col = Array.isArray(seg.co) ? seg.co : seg.color;
-                        const w = seg.w != null ? seg.w : seg.weight;
-                        rebuilt.push(new Line(createVector(sx, sy), createVector(ex, ey), col, w));
+                    let rebuilt = [];
+                    // Prefer compact lc if present
+                    if (data.g && typeof data.g.lc === 'string' && data.g.lc.length) {
+                        const ownerColor = Array.isArray(payload.color) ? payload.color : goblin.color;
+                        try { rebuilt = decodeLinesCompact(data.g.lc, ownerColor); } catch (e) { console.warn('Failed to decode compact lines:', e); rebuilt = []; }
+                    } else {
+                        const incomingLines = Array.isArray(payload.lines) ? payload.lines : (Array.isArray(payload.l) ? payload.l : []);
+                        for (let i = 0; i < incomingLines.length; i++) {
+                            const seg = incomingLines[i];
+                            const sx = seg.sx != null ? seg.sx : ((seg.start && Array.isArray(seg.start._values)) ? seg.start._values[0] : (seg.start && typeof seg.start.x === 'number' ? seg.start.x : 0));
+                            const sy = seg.sy != null ? seg.sy : ((seg.start && Array.isArray(seg.start._values)) ? seg.start._values[1] : (seg.start && typeof seg.start.y === 'number' ? seg.start.y : 0));
+                            const ex = seg.ex != null ? seg.ex : ((seg.end && Array.isArray(seg.end._values)) ? seg.end._values[0] : (seg.end && typeof seg.end.x === 'number' ? seg.end.x : sx));
+                            const ey = seg.ey != null ? seg.ey : ((seg.end && Array.isArray(seg.end._values)) ? seg.end._values[1] : (seg.end && typeof seg.end.y === 'number' ? seg.end.y : sy));
+                            const col = Array.isArray(seg.co) ? seg.co : seg.color;
+                            const w = seg.w != null ? seg.w : seg.weight;
+                            rebuilt.push(new Line(createVector(sx, sy), createVector(ex, ey), col, w));
+                        }
                     }
                     goblin.lines = rebuilt;
                     try { __syncOwnerLines(goblin.id, rebuilt); } catch {}
