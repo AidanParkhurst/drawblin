@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Drawblins • Shop</title>
+  <link rel="canonical" href="https://drawbl.in/shop" />
+  <link rel="icon" href="./favicon.ico" />
   <link href="https://fonts.googleapis.com/css2?family=Neucha&display=swap" rel="stylesheet" />
   <!-- Reuse global styles (login/account menu, chat look, etc.) -->
   <!-- Page-specific styles -->
@@ -11,13 +13,23 @@
     /* Fallback if CSS fails to load */
     .noscript { font-family: 'Neucha'; color: rgba(30,30,30,0.8); padding: 16px; }
   </style>
-  <link rel="icon" href="data:," />
   <meta name="description" content="Customize your goblin in the Drawblins shop" />
-  <script type="module" crossorigin src="./assets/shop-CZLsNFkx.js"></script>
-  <link rel="modulepreload" crossorigin href="./assets/auth-BhlDiXPq.js">
-  <link rel="stylesheet" crossorigin href="./assets/auth-G-z7ZtgZ.css">
-  <link rel="stylesheet" crossorigin href="./assets/shop-09KHasD6.css">
+  <script type="module" crossorigin src="./assets/shop-MmCwumD-.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/auth-XtUnfzLK.js">
+  <link rel="stylesheet" crossorigin href="./assets/index-dbebP8V7.css">
+  <link rel="stylesheet" crossorigin href="./assets/shop-QnJp5lkL.css">
 </head>
+
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-56J23HDHFP"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-56J23HDHFP');
+</script>
+
 <body class="shop-body">
   <noscript>
     <div class="noscript">JavaScript is required to use the shop.</div>
@@ -29,7 +41,7 @@
       <input id="account-name-input" class="account-menu__input" type="text" maxlength="40" placeholder="Your goblin name" />
       <div class="account-menu__buttons">
           <button id="account-open-shop" class="account-menu__action">Shop</button>
-          <button id="account-save-name" class="account-menu__action">Save</button>
+      <button id="account-open-account" class="account-menu__action">Details</button>
           <button id="account-signout" class="account-menu__action account-menu__action--danger">Sign out</button>
       </div>
   </div>
@@ -37,7 +49,7 @@
   <main class="shop-main">
     <header class="shop-header">
       <h1>Customize your goblin!</h1>
-      <p class="shop-sub">Pick a pack to make your goblin pop.</p>
+      <p class="shop-sub">Drawblins is free to play and ad-free, so your small cosmetic purchases keep the game alive! I'm deeply grateful for your support.</p>
     </header>
 
     <div class="back-link">
@@ -50,25 +62,26 @@
         <div class="shop-card__media shop-card__media--icon" aria-hidden="true">⭐</div>
         <div class="shop-card__content">
           <h3 class="shop-card__title">Premium Membership</h3>
-          <p class="shop-card__desc">Access all bundles this month for one simple recurring fee.</p>
-          <p class="shop-card__fineprint">Includes Companion Critter Collection, Big Win Bling Bundle, Poppin Goblin Pack, and new drops while active.</p>
+          <p class="shop-card__desc">Access to all bundles, for a recurring fee.</p>
+          <p class="shop-card__fineprint">Includes all bundles and new
+            drops while active.</p>
         </div>
       </article>
       <!-- Cards populated by shop.js (with fallback static HTML below) -->
+      <article class="shop-card" data-key="bling" tabindex="0">
+        <div class="shop-card__media placeholder" aria-hidden="true">👑</div>
+        <h3 class="shop-card__title">The Big Win Bling Bundle</h3>
+        <p class="shop-card__desc">Shades, cups, and shiny stuff to flex your dubs.</p>
+      </article>
       <article class="shop-card" data-key="critter" tabindex="0">
         <div class="shop-card__media placeholder" aria-hidden="true">🐾</div>
         <h3 class="shop-card__title">The Companion Critter Collection</h3>
         <p class="shop-card__desc">Adorable pets to keep your goblin company.</p>
       </article>
-      <article class="shop-card" data-key="bling" tabindex="0">
-        <div class="shop-card__media placeholder" aria-hidden="true">👑</div>
-        <h3 class="shop-card__title">The Big Win Bling Bundle</h3>
-        <p class="shop-card__desc">Halos, wings, and shiny things to flex your dubs.</p>
-      </article>
-      <article class="shop-card" data-key="poppin" tabindex="0">
+      <article class="shop-card" data-key="moregobs" tabindex="0">
         <div class="shop-card__media placeholder" aria-hidden="true">💥</div>
         <h3 class="shop-card__title">More Goblins</h3>
-        <p class="shop-card__desc">Expand your goblin collection with more unique characters.</p>
+        <p class="shop-card__desc">Expand your goblin options!</p>
       </article>
     </section>
   </main>
@@ -99,5 +112,9 @@
       </div>
     </div>
   </div>
+  <footer class="shop-footer" style="text-align:center; margin: 32px 0; font-family: 'Neucha'; color: rgba(30,30,30,0.6);">
+    <a href="./tos" style="margin-right: 16px; color: rgba(30,30,30,0.7); text-decoration: none;">Terms of Service</a>
+    <a href="./privacy" style="color: rgba(30,30,30,0.7); text-decoration: none;">Privacy Policy</a>
+  </footer>
 </body>
 </html>

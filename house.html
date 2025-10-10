@@ -4,18 +4,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Drawblins – House</title>
+    <meta name="robots" content="noindex, follow" />
+    <meta name="description" content="Join a friend’s Drawblins House lobby." />
+    <link rel="canonical" href="https://drawbl.in/house" />
+    <link rel="icon" href="./favicon.ico" />
     <link href="https://fonts.googleapis.com/css2?family=Neucha&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="./assets/auth-BhlDiXPq.js"></script>
-  <script type="module" crossorigin src="./assets/index-Drqklzg9.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/auth-G-z7ZtgZ.css">
+  <script type="module" crossorigin src="./assets/auth-XtUnfzLK.js"></script>
+  <script type="module" crossorigin src="./assets/entitlements-BCQvOwy8.js"></script>
+  <script type="module" crossorigin src="./assets/index-Dzj5ANIt.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-dbebP8V7.css">
 </head>
+
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-56J23HDHFP"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-56J23HDHFP');
+</script>
+
 <body>
     <a id="login-button" href="./login">Login</a>
     <div id="account-menu" style="display:none;">
         <div class="account-menu__name-label">Display name</div>
         <input id="account-name-input" class="account-menu__input" type="text" maxlength="40" placeholder="Your goblin name" />
         <div class="account-menu__buttons">
-            <button id="account-save-name" class="account-menu__action">Save</button>
+            <button id="account-open-account" class="account-menu__action">Account Details</button>
+            <a id="account-support" class="account-menu__action" href="mailto:support@drawbl.in">Contact Support</a>
             <button id="account-signout" class="account-menu__action account-menu__action--danger">Sign out</button>
         </div>
     </div>

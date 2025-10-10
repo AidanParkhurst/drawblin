@@ -3,12 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Drawblins</title>
+        <title>Drawblins</title>
+        <meta name="description" content="Drawblins is a silly, social drawing game. Free Draw together, Quick Draw and vote, or guess funny phrases." />
+        <link rel="canonical" href="https://drawbl.in/" />
+        <link rel="icon" href="./favicon.ico" />
+        <meta name="theme-color" content="#f0f0f0" />
+        <!-- Open Graph -->
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="Drawblins" />
+        <meta property="og:title" content="Drawblins • Multiplayer Drawing Game" />
+        <meta property="og:description" content="Drawblins is a silly, social drawing game. Free Draw together, Quick Draw and vote, or guess funny phrases." />
+        <meta property="og:url" content="https://drawbl.in/" />
+        <meta property="og:image" content="https://drawbl.in/assets/flaticon.png" />
+        <meta property="og:image:alt" content="An illustrated goblin, shaped like the letter D" />
+        <!-- Twitter -->
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Drawblins • Multiplayer Drawing Game" />
+        <meta name="twitter:description" content="Drawblins is a silly, social drawing game. Free Draw together, Quick Draw and vote, or guess funny phrases." />
+        <meta name="twitter:image" content="https://drawbl.in/assets/promo/pet_group_1.png" />
+        <meta name="twitter:image:alt" content="A group of playful goblins collaborating to draw a rainbow." />
+        <!-- JSON-LD: WebSite -->
+        <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "name": "Drawblins",
+            "url": "https://drawbl.in/",
+            "description": "A real-time multiplayer drawing game and social space, with multiple fun modes."
+        }
+        </script>
     <link href="https://fonts.googleapis.com/css2?family=Neucha&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="./assets/auth-BhlDiXPq.js"></script>
-  <script type="module" crossorigin src="./assets/index-Drqklzg9.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/auth-G-z7ZtgZ.css">
+  <script type="module" crossorigin src="./assets/auth-XtUnfzLK.js"></script>
+  <script type="module" crossorigin src="./assets/entitlements-BCQvOwy8.js"></script>
+  <script type="module" crossorigin src="./assets/index-Dzj5ANIt.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-dbebP8V7.css">
 </head>
+
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-56J23HDHFP"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-56J23HDHFP');
+</script>
+
 <body>
     <a id="login-button" href="./login">Login</a>
     <div id="account-menu" style="display:none;">
@@ -16,7 +56,8 @@
         <input id="account-name-input" class="account-menu__input" type="text" maxlength="40" placeholder="Your goblin name" />
         <div class="account-menu__buttons">
             <button id="account-open-shop" class="account-menu__action">Shop</button>
-            <button id="account-save-name" class="account-menu__action">Save</button>
+            <button id="account-open-account" class="account-menu__action">Account Details</button>
+            <a id="account-support" class="account-menu__action" href="mailto:support@drawbl.in">Contact Support</a>
             <button id="account-signout" class="account-menu__action account-menu__action--danger">Sign out</button>
         </div>
     </div>
