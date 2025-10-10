@@ -1,0 +1,14 @@
+# robots.txt for drawbl.in
+User-agent: *
+# Allow all by default
+Allow: /
+
+# Disallow low-value or private pages
+Disallow: /login
+Disallow: /account
+
+# House lobbies are invite/owner-driven; don't index listings
+Disallow: /house
+
+# Sitemap location
+Sitemap: https://drawbl.in/sitemap.xml

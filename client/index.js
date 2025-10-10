@@ -66,10 +66,24 @@ let homePortal = null;
 let hasInput = false;
 let pets = [];
 
+// Keep a handle to Free Draw portal for mobile messaging
+let freedrawPortalRef = null;
+
 // Line packing config
 const DEFAULT_WEIGHT = 5;               // common brush weight
 const USE_COMPACT_LINES = true;         // feature flag for compact wire format
 let __newPlayersSinceLastSend = 0;      // count newcomers observed since our last line send
+
+// Environment: lightweight mobile detection
+function isMobileDevice() {
+    try {
+        const ua = (navigator.userAgent || navigator.vendor || window.opera || '').toLowerCase();
+        const uaHit = /(android|iphone|ipad|ipod|blackberry|iemobile|opera mini)/i.test(ua);
+        const coarse = (window.matchMedia && matchMedia('(pointer:coarse)').matches) || (navigator.maxTouchPoints || 0) > 1;
+        return !!(uaHit || coarse);
+    } catch { return false; }
+}
+const __isMobile = isMobileDevice();
 
 // Helpers: tiny base64 <-> bytes (Uint8Array)
 function __bytesToBase64(bytes) {
@@ -390,6 +404,11 @@ async function start() {
         joined = true;
         lobby_type = 'freedraw'; // Set the lobby type to freedraw
     });
+    // Record reference and hide Free Draw portal on mobile
+    freedrawPortalRef = freedraw_portal;
+    if (__isMobile && freedraw_portal) {
+        freedraw_portal.active = false;
+    }
     let quickdraw_portal = new Portal(width / 2 + 400, height / 2 - 200, 150, you.ui_color, "Stand here to join\nQuick Draw", () => {
         you.lines = [];
         // game_state = 'waiting'; // Set game state to waiting
@@ -564,6 +583,8 @@ window.windowResized = () => {
     if (portals[1]) { portals[1].x = width / 2 + 400; portals[1].y = height / 2 - 200; }
     if (portals[2]) { portals[2].x = width / 2 - 400; portals[2].y = height / 2 - 200; }
     if (homePortal) { homePortal.x = width / 2 + 400; homePortal.y = height / 2 + 150; }
+    // Keep our Free Draw portal ref in sync, if present
+    if (freedrawPortalRef) { freedrawPortalRef.x = width / 2; freedrawPortalRef.y = height / 2 - 200; }
     // no-op with HTML chat; kept for compatibility
 }
 
@@ -578,6 +599,19 @@ window.draw = () => {
     } else if (!joined) {
         for (let portal of portals) {
             portal.update(deltaTime);
+        }
+        // Mobile-only: show a friendly message in place of the Free Draw portal
+        if (__isMobile && freedrawPortalRef) {
+            push();
+            translate(freedrawPortalRef.x, freedrawPortalRef.y);
+            textAlign(CENTER, CENTER);
+            noStroke();
+            // semitransparent rgb(30)
+            fill(30, 30, 30, 170);
+            textSize(18);
+            const msg = "Thanks for visiting Drawblins!\nUnfortunately, this game won't work on a phone,\nbecause you need a keyboard to move.\nSorry about that. -Aidan";
+            text(msg, 0, 0);
+            pop();
         }
     }
 
