@@ -9,6 +9,7 @@ import url from 'url';
 import FreeDrawLobby from './lobbies/FreeDrawLobby.js';
 import QuickDrawLobby from './lobbies/QuickDrawLobby.js';
 import GuessingGameLobby from './lobbies/GuessingGameLobby.js';
+import { incrLobby } from './metrics.js';
 
 const PORT = process.env.PORT || 3000; 
 const HOST = process.env.HOST || '0.0.0.0'; // Bind to all interfaces by default (helps on Ubuntu/cloud)
@@ -292,6 +293,9 @@ wss.on('connection', (socket, request) => {
     } else {
         lobby = findOrCreateLobby(lobbyType);
     }
+
+    // Record lobby join metrics (low-cost)
+    try { incrLobby(lobbyType); } catch (e) { /* noop */ }
 
     lobby.addClient(socket);
     socketToLobby.set(socket, lobby.id);

@@ -3,6 +3,7 @@
 import { getAdminSupabase } from './supabase.js';
 import Stripe from 'stripe';
 import { STRIPE_SECRET_KEY } from './env.js';
+import { appendPaymentRecord } from './metrics.js';
 
 /*
 Entitlement-focused schema (no currency balance). Suggested structure:
@@ -191,6 +192,11 @@ export async function recordCheckoutSessionIdentity(event) {
     // Edge case: no payment intent (uncommon) but we can still seed entitlements proactively.
     try { await applyEntitlementsForSessionOnly(enrichedEvent, userId); } catch (e) { console.warn('Session-only entitlement grant failed:', e.message); }
   }
+
+  // Append a compact payment/session record to the low-frequency payments log
+  try {
+    appendPaymentRecord({ kind: 'session', stripe_event_id: event.id, stripe_session_id: sessionId, payment_intent_id: paymentIntentId, amount, currency, resolved_user_id: userId, resolved_user_email: resolvedEmail, ts: new Date().toISOString() });
+  } catch (e) { /* swallow */ }
   return true;
 }
 
@@ -246,6 +252,10 @@ export async function markPaymentIntentSucceeded(event) {
   }
   // After ensuring payment row, attempt entitlement application if resolved_user_id present.
   try { await applyEntitlementsForPaymentIntent(paymentIntentId); } catch (e) { console.error('Entitlement application failed:', e.message); }
+  // Log compact payment record to payments log (low-frequency append)
+  try {
+    appendPaymentRecord({ kind: 'intent_succeeded', stripe_event_id: event.id, payment_intent_id: paymentIntentId, amount, currency, customer_email: customerEmail, customer_name: customerName, ts: new Date().toISOString() });
+  } catch (e) { /* swallow */ }
   return true;
 }
 
