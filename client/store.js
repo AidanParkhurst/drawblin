@@ -25,6 +25,8 @@ const DEALS = {
     cover: premiumBanner,
     images: [petGroup1,blingGroup1,blingGroup2,critterCover,blingCover,goblinCover,premiumBanner],
     price: { dollars: 2, cents: '99', period: '/ month' },
+    // Set this to your live checkout link
+    href: 'https://buy.stripe.com/9B64gB3zeczga730au4wM00',
     includes: 'This purchase grants 1 month of access to all items.'
   },
   critter: {
@@ -34,6 +36,8 @@ const DEALS = {
     cover: critterCover,
     images: [petGroup1, petGroup2, petGroup3, petGroup4],
     price: { dollars: 2, cents: '99' },
+    // Set this to your live checkout link
+    href: 'https://buy.stripe.com/7sY5kFfhWgPwenj6yS4wM03',
     includes: 'This purchase grants permanent access to 5 cosmetic pets.'
   },
   bling: {
@@ -43,6 +47,8 @@ const DEALS = {
     cover: blingCover,
     images: [blingGroup1, blingGroup2, blingGroup3],
     price: { dollars: 1, cents: '99' },
+    // Set this to your live checkout link
+    href: 'https://buy.stripe.com/8x23cx9XCczgdjfg9s4wM01',
     includes: 'This purchase grants permanent access to 5 accessories, equippable whenever you are 1st on the leaderboard.'
   },
   moregobs: {
@@ -52,6 +58,8 @@ const DEALS = {
     cover: goblinCover,
     images: [goblinGroup1, goblinGroup2, goblinGroup3, goblinGroup4, goblinCover],
     price: { dollars: 4, cents: '99' },
+    // Set this to your live checkout link
+    href: 'https://buy.stripe.com/00w7sNfhW2YG5QN7CW4wM02',
     includes: 'This purchase grants permanent access to 4 additional goblin shapes.'
   }
 };
@@ -150,16 +158,26 @@ async function openModal(deal) {
         window.location.assign(url);
       };
     } else {
-      btn.id = 'modal-buy';
-      btn.className = 'btn-buy';
-      btn.textContent = 'Buy!';
-      btn.onclick = () => {
+      // If a checkout link is provided, render an anchor as the buy button
+      if (deal && typeof deal.href === 'string' && deal.href.trim().length > 0) {
+        const link = document.createElement('a');
+        link.id = 'modal-buy';
+        link.className = 'btn-buy';
+        link.textContent = 'Buy!';
+        link.href = deal.href;
+        // Keep default navigation in same tab; authors can change target if desired
+        // link.target = '_blank'; link.rel = 'noopener noreferrer';
+        cta.appendChild(link);
+      } else {
+        // Fallback: keep disabled placeholder button if href not yet provided
+        btn.id = 'modal-buy';
+        btn.className = 'btn-buy';
+        btn.textContent = 'Buy!';
         btn.disabled = true;
-        btn.textContent = 'Purchased!';
-        setTimeout(() => { btn.disabled = false; btn.textContent = 'Buy!'; }, 1500);
-      };
+        btn.title = 'Checkout link not configured yet';
+        cta.appendChild(btn);
+      }
     }
-    cta.appendChild(btn);
   }
 }
 

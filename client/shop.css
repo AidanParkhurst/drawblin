@@ -207,9 +207,13 @@
 
 .btn-buy {
   width: 100%; padding: 12px 14px; font-size: 20px; font-family: 'Neucha';
+  display: block; /* ensure full width for anchors */
+  box-sizing: border-box; /* include border in width to prevent overflow */
   border: 3px dashed rgba(30,150,80,0.35); border-radius: 12px;
   background: linear-gradient(135deg, #34d399, #10b981);
   color: white; cursor: pointer; transition: 0.2s all; text-shadow: 0 1px 0 rgba(0,0,0,0.2);
+  text-decoration: none; /* anchors inherit this */
+  text-align: center; /* center label for both button and anchor */
 }
 .btn-buy:hover { transform: scale(1.04); filter: saturate(1.1) brightness(1.02); }
 .btn-buy:disabled { opacity: 0.7; cursor: not-allowed; }
