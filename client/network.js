@@ -1,7 +1,7 @@
 import { onopen, onmessage } from './index.js'; // Import handlers from index.js
 // Network configuration
-const BASE_URL = "ws://localhost:3000"; // Change to server URL
-// const BASE_URL = "https://api.drawbl.in"; // Production URL
+// const BASE_URL = "ws://localhost:3000"; // Change to server URL
+const BASE_URL = "https://api.drawbl.in"; // Production URL
 
 let ws = null;
 

@@ -186,25 +186,46 @@ class GuessingGameLobby extends Lobby {
             return pool.length ? pick(pool).word : null;
         };
 
-        // Tokenize and fill placeholders
+        // Tokenize and fill placeholders (support suffix like (object)s and punctuation)
         const rawParts = template.split(/\s+/);
         const tokens = [];
+        const pluralize = (w) => {
+            if (!w) return w;
+            const lower = w.toLowerCase();
+            // basic pluralization rules
+            if (/([sxz]|(sh)|(ch))$/i.test(lower)) return w + 'es';
+            if (/[^aeiou]y$/i.test(lower)) return w.slice(0, -1) + 'ies';
+            return w + 's';
+        };
         for (const part of rawParts) {
-            const m = part.match(/^\(([^)]+)\)$/);
+            // groups: 1=inner, 2=alpha suffix (e.g., 's'), 3=punctuation suffix
+            const m = part.match(/^\(([^)]+)\)([a-zA-Z]*)([^a-zA-Z]*)?$/);
             if (m) {
-                const inner = m[1].trim();
+                const inner = (m[1] || '').trim();
+                const alphaSuffix = (m[2] || '').trim();
+                const punct = m[3] || '';
+                let base = '';
+                let type = 'noun';
                 if (inner === 'adj') {
-                    tokens.push({ type: 'adj', value: pick(adjectives) });
+                    type = 'adj';
+                    base = pick(adjectives);
                 } else if (inner === 'noun') {
                     // Any lexicon entry
                     const singles = lexicon.filter(e => !e.word.includes(' '));
                     const entry = (singles.length ? pick(singles) : pick(lexicon));
-                    tokens.push({ type: 'noun', value: entry ? entry.word : 'thing' });
+                    base = entry ? entry.word : 'thing';
                 } else {
                     // Treat as tag expression
-                    const chosen = chooseByTags(inner) || 'thing';
-                    tokens.push({ type: 'noun', value: chosen });
+                    base = chooseByTags(inner) || 'thing';
                 }
+                let value = base;
+                if (alphaSuffix) {
+                    // only attempt plural rules for a simple 's' suffix; otherwise append as-is
+                    if (alphaSuffix.toLowerCase() === 's') value = pluralize(base);
+                    else value = base + alphaSuffix;
+                }
+                tokens.push({ type, value });
+                if (punct) tokens.push({ type: 'literal', value: punct });
             } else {
                 tokens.push({ type: 'literal', value: part });
             }
@@ -217,7 +238,11 @@ class GuessingGameLobby extends Lobby {
     handleMessage(socket, message) {
         if (message.type === "update") {
             if (!this.users.has(socket)) {
-                this.users.set(socket, { id: message.goblin?.id });
+                // Track user id from either legacy or compact update shape
+                const gid = (message.goblin && message.goblin.id != null)
+                    ? message.goblin.id
+                    : (message.g && message.g.i != null ? message.g.i : null);
+                if (gid != null) this.users.set(socket, { id: gid });
                 // On first update from a new client, send current state and scoreboard if waiting
                 if (this.gameState === 'waiting') {
                     // Adjust timer now that a new player is present
@@ -233,7 +258,10 @@ class GuessingGameLobby extends Lobby {
                     this.sendTo(socket, { type: "game_state", state: 'reveal', prompt: this.prompt, artistId: this.getUserId(this.currentArtist), time: Math.max(0, this.timer) });
                 }
             } else {
-                this.users.set(socket, { id: message.goblin?.id });
+                const gid = (message.goblin && message.goblin.id != null)
+                    ? message.goblin.id
+                    : (message.g && message.g.i != null ? message.g.i : null);
+                if (gid != null) this.users.set(socket, { id: gid });
             }
             this.broadcast(message, socket);
 

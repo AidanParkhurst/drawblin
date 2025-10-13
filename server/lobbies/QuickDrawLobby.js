@@ -18,7 +18,7 @@ class QuickDrawLobby extends Lobby {
         this.currentArtist = null; // id of artist being voted on 
         // TODO: Import a lot of these consts from a rules file, accessible by the frontend as well
         this.waitingTime = 20; // seconds to wait for players
-        this.drawingTime = 15; // seconds (extended)
+        this.drawingTime = 180; // seconds (extended)
         this.preVotingTime = 5; // seconds before voting starts
         this.votingTime = 15;
         this.celebrationTime = 20; // seconds to show off the winner
@@ -59,7 +59,7 @@ class QuickDrawLobby extends Lobby {
 
     addClient(socket) {
         super.addClient(socket);
-    if (this.gameState === 'waiting') {
+        if (this.gameState === 'waiting') {
             const target = this.desiredWaitForPlayers();
             if (this.timer > target) this.timer = target; // shrink but never extend
         }
@@ -214,7 +214,7 @@ class QuickDrawLobby extends Lobby {
         this.prompt = "";
         this.finishedDrawings.clear();
         this.sortedResults = [];
-    this.broadcast({ type: "game_state", state: "waiting", time: this.timer });
+        this.broadcast({ type: "game_state", state: "waiting", time: this.timer });
     }
 
     startNextRound() {

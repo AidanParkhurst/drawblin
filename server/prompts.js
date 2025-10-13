@@ -52,7 +52,7 @@ const prompts = {
     '(vehicle) made of (material)',
     '(animal) on a (ridable) in a (place)',
     '(character) trapped inside a (container)',
-    'tower of (food)s',
+    '(adj) tower of (food)s',
     '(adj) (person) playing (sport)',
     '(person) surfing on a (object)',
     '(animal|creature) running from a (monster)',
