@@ -221,6 +221,7 @@ const __knownLineKeys = new Map(); // key -> entry
 const __perOwnerKeys = new Map(); // ownerId -> Set(keys)
 
 function __colorKey(c){ return Array.isArray(c) ? c.join(',') : String(c); }
+function __idEq(a, b) { return String(a) === String(b); }
 function __normPt(pt){
     if (!pt) return { x: 0, y: 0 };
     if (Array.isArray(pt._values) && pt._values.length >= 2) return { x: pt._values[0], y: pt._values[1] };
@@ -295,11 +296,45 @@ function __clearOwnerLines(ownerId){
 function __drawGlobalLines(){
     // Render in seq order; skip removed; cache style to minimize state changes
     if (__globalLines.length === 0) return;
+
+    // Quick Draw: enforce per-phase visibility of lines
+    // - drawing: only your own lines
+    // - pre-voting: no lines
+    // - voting: only current artist's lines
+    // - finished: only primary winner's lines
+    let allowOwner = null;
+    if (lobby_type === 'quickdraw') {
+        if (game_state === 'drawing') {
+            const myId = you?.id;
+            allowOwner = (ownerId) => __idEq(ownerId, myId);
+        } else if (game_state === 'pre-voting') {
+            allowOwner = () => false; // hide all
+        } else if (game_state === 'voting') {
+            const artistId = current_artist;
+            allowOwner = (ownerId) => __idEq(ownerId, artistId);
+        } else if (game_state === 'finished') {
+            // Prefer the deterministic primary winner; fallback to any from last_winners
+            const primary = (typeof quickdrawPrimaryWinner === 'number' || typeof quickdrawPrimaryWinner === 'string')
+                ? quickdrawPrimaryWinner
+                : null;
+            if (primary != null) {
+                allowOwner = (ownerId) => __idEq(ownerId, primary);
+            } else if (last_winners && typeof last_winners.has === 'function') {
+                allowOwner = (ownerId) => {
+                    for (const w of last_winners) { if (__idEq(ownerId, w)) return true; }
+                    return false;
+                };
+            } else {
+                allowOwner = () => false;
+            }
+        }
+    }
     push();
     strokeJoin(ROUND); strokeCap(ROUND); noFill();
     let lastColorKey = null; let lastWeight = -1;
     for (const seg of __globalLines){
         if (seg.removed) continue;
+        if (allowOwner && !allowOwner(seg.ownerId)) continue;
         const ckey = __colorKey(seg.color);
         if (ckey !== lastColorKey){ stroke(seg.color); lastColorKey = ckey; }
         if (seg.weight !== lastWeight){ strokeWeight(seg.weight); lastWeight = seg.weight; }
@@ -802,7 +837,7 @@ function quickdraw_update(delta) {
             goblin.hasBling = quickdrawWinners.has(goblin.id);
             if (goblin.id === current_artist) goblin.update(delta); else goblin.update(delta, false);
         }
-        headerText = `Rate this drawing 1-5`;
+        headerText = (__idEq(you.id, current_artist)) ? 'Show off your drawing!' : 'Rate this drawing 1-5';
     } else if (game_state === 'finished') {
         // Determine winners (tie-aware) using highest averageVote
         let winners = [];
@@ -1177,22 +1212,8 @@ function onmessage(event) {
             const prev_state = game_state;
             if (lobby_type === 'quickdraw') {
                 if (data.state === 'waiting') {
-                            if (game_state === 'finished' && last_winners.size > 0) { // game restarted
-                                if (lobby_type === 'quickdraw') {
-                                    // Keep only primary winner's drawing (avoid overlapping multiple winning drawings)
-                                    for (let goblin of goblins) {
-                                        if (quickdrawPrimaryWinner == null || goblin.id !== quickdrawPrimaryWinner) {
-                                            goblin.lines = [];
-                                            try { __clearOwnerLines(goblin.id); } catch {}
-                                        }
-                                    }
-                                } else {
-                                    // Other modes may keep all winners (currently none use this branch)
-                                    for (let goblin of goblins) {
-                                        if (!last_winners.has(goblin.id)) { goblin.lines = []; try { __clearOwnerLines(goblin.id); } catch {} }
-                                    }
-                                }
-                            }
+                    // After finished phase, clear all drawings before waiting
+                    for (let goblin of goblins) { goblin.lines = []; try { __clearOwnerLines(goblin.id); } catch {} }
                     timer = data.time;
 
                 } else if (data.state === 'drawing') {

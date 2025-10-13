@@ -18,7 +18,7 @@ class QuickDrawLobby extends Lobby {
         this.currentArtist = null; // id of artist being voted on 
         // TODO: Import a lot of these consts from a rules file, accessible by the frontend as well
         this.waitingTime = 20; // seconds to wait for players
-        this.drawingTime = 70; // seconds (extended)
+        this.drawingTime = 15; // seconds (extended)
         this.preVotingTime = 5; // seconds before voting starts
         this.votingTime = 15;
         this.celebrationTime = 20; // seconds to show off the winner
@@ -90,7 +90,8 @@ class QuickDrawLobby extends Lobby {
             if (this.timer <= 0) { // Wait 5 seconds before starting voting
                 this.gameState = 'voting';
                 // Pick the first available artist id
-                this.currentArtist = Array.from(this.finishedDrawings.keys())[0] || null;
+                const artistKeys = Array.from(this.finishedDrawings.keys());
+                this.currentArtist = artistKeys[0] ?? null;
                 this.timer = this.votingTime; // Set timer to voting time
                 this.broadcast({ type: "game_state", state: "voting", artistId: this.currentArtist, time: this.votingTime });
             }
@@ -135,7 +136,13 @@ class QuickDrawLobby extends Lobby {
             if (!this.users.has(socket)) {
                 this.sendTo(socket, {type: "game_state", state: this.gameState, prompt: this.prompt, time: Math.max(0, this.timer), artistId: this.currentArtist, results: this.sortedResults });
             }
-            this.users.set(socket, { id: message.goblin?.id });
+            // Accept both legacy and compact goblin update shapes
+            const gid = (message.goblin && message.goblin.id != null)
+                ? message.goblin.id
+                : (message.g && message.g.i != null ? message.g.i : null);
+            if (gid != null) {
+                this.users.set(socket, { id: gid });
+            }
             this.broadcast(message, socket); // still exclude sender for movement updates
 
         } else if (message.type === "chat") {
