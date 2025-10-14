@@ -79,41 +79,15 @@ async function render() {
     premiumText = 'Premium member';
     renewalText = 'Renews automatically';
   }
-  const cancelBtn = ents?.has_premium ? el('button', { class: 'btn-outline', text: 'Cancel membership' }) : null;
   let manageBtn = null;
-  if (cancelBtn) {
-    cancelBtn.addEventListener('click', async () => {
-      cancelBtn.disabled = true;
-      cancelBtn.textContent = 'Cancelling...';
-      try {
-  const token = getSession()?.access_token;
-  if (!token) throw new Error('No auth session');
-  const resp = await apiFetch('/api/subscription/cancel', { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } });
-        if (!resp.ok) {
-          const j = await resp.json().catch(()=>({}));
-          const extra = [j.detail, j.code].filter(Boolean).join(' | ');
-          alert('Cancel failed: ' + (j.error || resp.status) + (extra ? ('\n' + extra) : ''));
-        } else {
-          const j = await resp.json();
-          alert('Subscription set to cancel at period end.');
-          // Re-render to reflect state
-          await render();
-          return;
-        }
-      } catch (e) {
-        alert('Cancel error: ' + (e?.message || e));
-      } finally {
-        cancelBtn.disabled = false;
-        cancelBtn.textContent = 'Cancel membership';
-      }
-    });
+  if (ents?.has_premium) {
     manageBtn = el('button', { class: 'btn-outline', text: 'Manage billing' });
     manageBtn.addEventListener('click', async () => {
       manageBtn.disabled = true; manageBtn.textContent = 'Opening portal...';
       try {
-  const token = getSession()?.access_token;
-  if (!token) throw new Error('No auth session');
-  const resp = await apiFetch('/api/subscription/portal', { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } });
+        const token = getSession()?.access_token;
+        if (!token) throw new Error('No auth session');
+        const resp = await apiFetch('/api/subscription/portal', { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } });
         if (!resp.ok) {
           const j = await resp.json().catch(()=>({}));
           const extra = [j.detail, j.code].filter(Boolean).join(' | ');
@@ -134,7 +108,6 @@ async function render() {
       el('div', { class: 'account-row-title', text: premiumText }),
       el('div', { class: 'account-row-sub', text: renewalText }),
     ]),
-    cancelBtn,
     manageBtn
   ].filter(Boolean));
 
