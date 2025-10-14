@@ -383,7 +383,8 @@ export async function markPaymentIntentSucceeded(event) {
     try {
       const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
       const sess = await stripe.checkout.sessions.retrieve(orderRef, { expand: ['line_items'] });
-      priceIds.push(...await extractPriceIdsFromSession(sess));
+      const extra = await extractPriceIdsFromSession(sess);
+      if (Array.isArray(extra)) priceIds.push(...extra);
       if (!email) email = coalesceEmail(sess, null);
       // If subscription present on session, fetch subscription items
       if (sess.subscription && !priceIds.length) {
@@ -538,5 +539,62 @@ export async function markSubscriptionCanceledOrUpdated(event) {
   } catch (e) {
     console.warn('Failed to insert entitlement revoke event:', e?.message || e);
   }
+  return true;
+}
+
+// Handle customer.subscription.created as a recovery path: ensure entitlements granted
+export async function markSubscriptionCreated(event) {
+  const supa = getAdminSupabase();
+  if (!supa) throw new Error('Supabase admin client unavailable');
+  const sub = event?.data?.object || {};
+  const subscriptionId = sub.id;
+  const customerId = sub.customer || null;
+  if (!subscriptionId) return false;
+  // Try to find existing payment row via subscription id inside raw_session or raw_payment_intent
+  let paymentRow = null;
+  try {
+    const { data: rows } = await supa
+      .from('payments')
+      .select('*')
+      .order('id', { ascending: false })
+      .limit(50);
+    if (rows) {
+      for (const r of rows) {
+        const parse = (raw) => { if (!raw) return {}; if (typeof raw === 'string') { try { return JSON.parse(raw); } catch { return {}; } } return raw; };
+        const rs = parse(r.raw_session); const ri = parse(r.raw_payment_intent);
+        const sessObj = rs?.data?.object || rs?.object || {};
+        if (sessObj?.subscription === subscriptionId) { paymentRow = r; break; }
+      }
+    }
+  } catch {}
+  // If no payment row, create a minimal synthetic one (best-effort)
+  if (!paymentRow) {
+    let email = null;
+    if (customerId && STRIPE_SECRET_KEY) {
+      try {
+        const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
+        const cust = await stripe.customers.retrieve(customerId);
+        if (cust && typeof cust.email === 'string') email = cust.email;
+      } catch {}
+    }
+    const fields = {
+      stripe_event_id: event.id,
+      stripe_session_id: null,
+      payment_intent_id: null,
+      status: 'succeeded',
+      amount_total: null,
+      currency: sub.currency || null,
+      created_unix: sub.created || null,
+      customer_email: email,
+      customer_name: null,
+      account_email_supplied: null,
+      resolved_user_email: email,
+      raw_session: null,
+      raw_payment_intent: { synthetic_subscription: sub },
+      confirmed_at: new Date().toISOString()
+    };
+    try { paymentRow = await upsertPaymentMerge(fields); } catch (e) { console.warn('Synthetic payment row creation failed:', e.message); }
+  }
+  try { await tryGrantEntitlements(paymentRow); } catch (e) { console.warn('Entitlement grant after subscription.created failed:', e.message); }
   return true;
 }

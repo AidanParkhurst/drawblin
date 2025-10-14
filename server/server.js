@@ -4,7 +4,7 @@ import http from 'http';
 import express from 'express';
 import Stripe from 'stripe';
 import { STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, summarizeEnv } from './env.js';
-import { recordCheckoutSessionIdentity, markPaymentIntentSucceeded, markSubscriptionCanceledOrUpdated } from './payments.js';
+import { recordCheckoutSessionIdentity, markPaymentIntentSucceeded, markSubscriptionCanceledOrUpdated, markSubscriptionCreated } from './payments.js';
 import url from 'url';
 import FreeDrawLobby from './lobbies/FreeDrawLobby.js';
 import QuickDrawLobby from './lobbies/QuickDrawLobby.js';
@@ -76,6 +76,10 @@ app.post('/webhook/stripe', async (req, res) => {
             case 'customer.subscription.updated':
                 await markSubscriptionCanceledOrUpdated(event);
                 console.log(`Stripe: subscription ${event.type} processed (${event.data?.object?.id})`);
+                break;
+            case 'customer.subscription.created':
+                await markSubscriptionCreated(event);
+                console.log(`Stripe: subscription created processed (${event.data?.object?.id})`);
                 break;
             default:
                 // Intentionally ignore unhandled Stripe event types in production
