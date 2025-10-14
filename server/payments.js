@@ -190,7 +190,25 @@ async function upsertPaymentMerge(fields) {
     // Preserve resolved user id if already set
     if (existing.resolved_user_id && !fields.resolved_user_id) fields.resolved_user_id = existing.resolved_user_id;
     if (existing.resolved_user_email && !fields.resolved_user_email) fields.resolved_user_email = existing.resolved_user_email;
+    // Preserve account_email_supplied if new payload lacks it
+    if (!fields.account_email_supplied && existing.account_email_supplied) fields.account_email_supplied = existing.account_email_supplied;
+    // Preserve customer email/name if new payload lacks them
+    if (!fields.customer_email && existing.customer_email) fields.customer_email = existing.customer_email;
+    if (!fields.customer_name && existing.customer_name) fields.customer_name = existing.customer_name;
   }
+
+  // Choose a canonical resolved_user_email with precedence for account_email_supplied when valid
+  const isValidEmail = (v) => typeof v === 'string' && /.+@.+\..+/.test(v);
+  const candidateEmails = [
+    fields.account_email_supplied,
+    existing?.account_email_supplied,
+    fields.resolved_user_email,
+    existing?.resolved_user_email,
+    fields.customer_email,
+    existing?.customer_email,
+  ];
+  const picked = candidateEmails.find(isValidEmail) || null;
+  if (picked) fields.resolved_user_email = picked;
   const { error } = await supa.from('payments').upsert(fields, { onConflict: conflictKey });
   if (error) throw new Error(error.message);
   const { data } = await supa.from('payments').select('*').eq(selKey, selVal).maybeSingle();
@@ -206,7 +224,7 @@ function coalesceEmail(session, intent) {
 
 async function ensureResolvedUser(supa, paymentRow) {
   if (paymentRow.resolved_user_id) return paymentRow.resolved_user_id;
-  const email = paymentRow.resolved_user_email || paymentRow.account_email_supplied || paymentRow.customer_email || null;
+  const email = paymentRow.account_email_supplied || paymentRow.resolved_user_email || paymentRow.customer_email || null;
   if (!email) return null;
   const { userId } = await resolveUserByEmail(supa, email);
   if (userId) {
@@ -255,9 +273,10 @@ async function tryGrantEntitlements(paymentRow) {
   const { data: current } = await supa.from('user_entitlements').select('*').eq('user_id', userId).maybeSingle();
   const state = current || {};
   const updates = {}; const granted = [];
+  const unmapped = [];
   for (const pid of priceIds) {
     const ent = PRICE_TO_ENTITLEMENT[pid];
-    if (!ent) continue;
+    if (!ent) { unmapped.push(pid); continue; }
     if (ent === 'premium' && !state.has_premium) { updates.has_premium = true; updates.premium_since = new Date().toISOString(); granted.push('premium'); }
     else if (ent === 'pet_pack' && !state.pet_pack) { updates.pet_pack = true; granted.push('pet_pack'); }
     else if (ent === 'win_bling_pack' && !state.win_bling_pack) { updates.win_bling_pack = true; granted.push('win_bling_pack'); }
@@ -277,6 +296,9 @@ async function tryGrantEntitlements(paymentRow) {
     });
   }
   console.log('[payments] Granted entitlements', granted, 'user', userId, 'payment', paymentRow.id);
+  if (unmapped.length) {
+    console.warn('[payments] Unmapped Stripe price IDs, no entitlements granted for these:', unmapped);
+  }
 }
 
 export async function recordCheckoutSessionIdentity(event) {
@@ -289,6 +311,7 @@ export async function recordCheckoutSessionIdentity(event) {
   const currency = session.currency ?? null;
   const createdUnix = session.created ?? null;
   const email = coalesceEmail(session, null);
+  const supplied = extractAccountEmail(session) || null;
   const customerName = session.customer_details?.name || null;
 
   // Extract price IDs (non-expanded) and store them on raw_session for later.
@@ -362,8 +385,8 @@ export async function recordCheckoutSessionIdentity(event) {
     created_unix: createdUnix,
     customer_email: email,
     customer_name: customerName,
-    account_email_supplied: extractAccountEmail(session) || null,
-    resolved_user_email: email,
+    account_email_supplied: supplied,
+    resolved_user_email: supplied || email || null,
     raw_session: enrichedRaw,
     confirmed_at: null
   };
