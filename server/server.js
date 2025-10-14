@@ -160,7 +160,37 @@ app.post('/api/subscription/cancel', async (req, res) => {
     const rec = await findLatestSubscriptionRecord(user.id);
     if (!rec) return res.status(404).json({ error: 'No active subscription found' });
     try {
-        const updated = await stripe.subscriptions.update(rec.subscriptionId, { cancel_at_period_end: true });
+        // First, try to retrieve the subscription to validate the ID
+        let targetSubId = rec.subscriptionId;
+        let subObj = null;
+        try {
+            subObj = await stripe.subscriptions.retrieve(targetSubId);
+        } catch (e) {
+            // If this is a not-found error, attempt to locate a current subscription by customer
+            const code = e?.code || e?.type || '';
+            const statusCode = e?.statusCode || e?.status || 0;
+            const looksMissing = statusCode === 404 || String(code).includes('resource_missing');
+            if (looksMissing && rec.customerId) {
+                console.warn('Stored subscription id not found; falling back to list by customer', { userId: user.id, subId: rec.subscriptionId, customerId: rec.customerId });
+                const list = await stripe.subscriptions.list({ customer: rec.customerId, status: 'all', limit: 10 });
+                // Choose the most recently created non-canceled subscription
+                const candidates = (list?.data || [])
+                  .filter(s => s.status !== 'canceled')
+                  .sort((a,b) => (b.created || 0) - (a.created || 0));
+                if (candidates.length > 0) {
+                    subObj = candidates[0];
+                    targetSubId = subObj.id;
+                }
+            } else {
+                throw e; // Different error; rethrow to outer catch
+            }
+        }
+
+        if (!subObj) {
+            return res.status(404).json({ error: 'No active subscription found for customer', detail: 'Could not locate a current subscription for this account', hint: 'Verify Stripe key mode (test vs live) matches the subscription environment' });
+        }
+
+        const updated = await stripe.subscriptions.update(targetSubId, { cancel_at_period_end: true });
         return res.json({
             subscription: {
                 id: updated.id,
@@ -170,7 +200,16 @@ app.post('/api/subscription/cancel', async (req, res) => {
             }
         });
     } catch (e) {
-        return res.status(500).json({ error: 'Stripe subscription update failed', detail: e?.message || String(e) });
+        console.error('Stripe subscription cancel failed:', {
+            message: e?.message,
+            code: e?.code,
+            type: e?.type,
+            raw: e
+        });
+        const hint = (e?.code === 'resource_missing' || (e?.statusCode === 404))
+          ? 'Possible test/live key mismatch or invalid/stale subscription id'
+          : undefined;
+        return res.status(500).json({ error: 'Stripe subscription update failed', detail: e?.message || String(e), code: e?.code || null, hint });
     }
 });
 

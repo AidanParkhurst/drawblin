@@ -1,5 +1,20 @@
-import { ready as authReady, isAuthConfigured, getUser, getClient } from './auth.js';
+import { ready as authReady, isAuthConfigured, getUser, getClient, getSession } from './auth.js';
 import { fetchEntitlements } from './entitlements.js';
+
+// Central API base detection for local vs prod. Allow window override for flexibility.
+const API_BASE = (() => {
+  try {
+    if (typeof window !== 'undefined' && window.DRAWBLIN_API_BASE) return window.DRAWBLIN_API_BASE;
+    const host = location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return 'http://localhost:3000';
+    if (host === 'api.drawbl.in') return '';
+    return 'https://api.drawbl.in';
+  } catch { return ''; }
+})();
+
+async function apiFetch(path, opts) {
+  return fetch(`${API_BASE}${path}`, opts);
+}
 
 function el(tag, attrs = {}, children = []) {
   const e = document.createElement(tag);
@@ -71,11 +86,13 @@ async function render() {
       cancelBtn.disabled = true;
       cancelBtn.textContent = 'Cancelling...';
       try {
-        const token = (await getClient())?.auth?.session()?.access_token;
-        const resp = await fetch('/api/subscription/cancel', { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } });
+  const token = getSession()?.access_token;
+  if (!token) throw new Error('No auth session');
+  const resp = await apiFetch('/api/subscription/cancel', { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } });
         if (!resp.ok) {
           const j = await resp.json().catch(()=>({}));
-            alert('Cancel failed: ' + (j.error || resp.status));
+          const extra = [j.detail, j.code].filter(Boolean).join(' | ');
+          alert('Cancel failed: ' + (j.error || resp.status) + (extra ? ('\n' + extra) : ''));
         } else {
           const j = await resp.json();
           alert('Subscription set to cancel at period end.');
@@ -94,11 +111,13 @@ async function render() {
     manageBtn.addEventListener('click', async () => {
       manageBtn.disabled = true; manageBtn.textContent = 'Opening portal...';
       try {
-        const token = (await getClient())?.auth?.session()?.access_token;
-        const resp = await fetch('/api/subscription/portal', { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } });
+  const token = getSession()?.access_token;
+  if (!token) throw new Error('No auth session');
+  const resp = await apiFetch('/api/subscription/portal', { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } });
         if (!resp.ok) {
           const j = await resp.json().catch(()=>({}));
-          alert('Portal error: ' + (j.error || resp.status));
+          const extra = [j.detail, j.code].filter(Boolean).join(' | ');
+          alert('Portal error: ' + (j.error || resp.status) + (extra ? ('\n' + extra) : ''));
         } else {
           const j = await resp.json();
           if (j.url) window.location.href = j.url;
