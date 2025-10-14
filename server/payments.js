@@ -223,46 +223,60 @@ async function tryGrantEntitlements(paymentRow) {
   const userId = await ensureResolvedUser(supa, paymentRow);
   if (!userId) return;
 
-  let priceIds = [];
-  const parseRaw = (raw) => { if (!raw) return {}; if (typeof raw === 'string') { try { return JSON.parse(raw); } catch { return {}; } } return raw; };
-  const rawSessionContainer = parseRaw(paymentRow.raw_session);
-  const rawIntentContainer = parseRaw(paymentRow.raw_payment_intent);
-  const rawSession = rawSessionContainer?.data?.object || rawSessionContainer?.object || {};
-  const rawIntent = rawIntentContainer?.data?.object || rawIntentContainer?.object || {};
-  const extractedSessionIds = rawSessionContainer?.extracted_price_ids || paymentRow.raw_session?.extracted_price_ids;
-  if (Array.isArray(extractedSessionIds)) priceIds.push(...extractedSessionIds);
-  const extractedIntentIds = rawIntentContainer?.extracted_price_ids || paymentRow.raw_payment_intent?.extracted_price_ids;
-  if (Array.isArray(extractedIntentIds)) priceIds.push(...extractedIntentIds);
-  priceIds.push(...extractPriceIdsFromSession(rawSession));
-  priceIds.push(...extractPriceIdsFromIntent(rawIntent));
-  if (!priceIds.length && paymentRow.stripe_session_id) {
-    const expanded = await enrichSessionIfNeeded(paymentRow.stripe_session_id);
-    priceIds.push(...extractPriceIdsFromSession(expanded));
+  // Parse raw JSON payloads safely
+  const parse = (raw) => {
+    if (!raw) return null;
+    if (typeof raw === 'string') { try { return JSON.parse(raw); } catch { return null; } }
+    return raw;
+  };
+  const rawSession = parse(paymentRow.raw_session);
+  const rawIntent = parse(paymentRow.raw_payment_intent);
+  const sessionObj = rawSession?.data?.object || rawSession?.object || null;
+  const intentObj = rawIntent?.data?.object || rawIntent?.object || null;
+
+  const priceIdsSet = new Set();
+  const pushAll = (arr) => { if (Array.isArray(arr)) for (const x of arr) if (typeof x === 'string' && x.startsWith('price_')) priceIdsSet.add(x); };
+  // From extracted arrays
+  pushAll(rawSession?.extracted_price_ids);
+  pushAll(rawIntent?.extracted_price_ids);
+  // From objects
+  pushAll(extractPriceIdsFromSession(sessionObj || {}));
+  pushAll(extractPriceIdsFromIntent(intentObj || {}));
+  // Fallback for subscription mode with no price IDs but known premium price constant
+  if (!priceIdsSet.size && (sessionObj?.mode === 'subscription' || /subscription/i.test(intentObj?.description || '')) && typeof STRIPE_PRICE_PREMIUM_SUB === 'string') {
+    priceIdsSet.add(STRIPE_PRICE_PREMIUM_SUB);
   }
-  priceIds = Array.from(new Set(priceIds.filter(p => typeof p === 'string' && p.startsWith('price_'))));
-  if (!priceIds.length) return;
+  if (!priceIdsSet.size) {
+    return; // nothing to grant
+  }
+  const priceIds = Array.from(priceIdsSet);
 
   await ensureUserEntitlementsRow(supa, userId);
-  const { data: current } = await supa.from('user_entitlements').select('has_premium, pet_pack, win_bling_pack, more_goblins_pack').eq('user_id', userId).maybeSingle();
+  const { data: current } = await supa.from('user_entitlements').select('*').eq('user_id', userId).maybeSingle();
   const state = current || {};
   const updates = {}; const granted = [];
   for (const pid of priceIds) {
-    const ent = PRICE_TO_ENTITLEMENT[pid]; if (!ent) continue;
-    switch (ent) {
-      case 'premium': if (!state.has_premium) { updates.has_premium = true; updates.premium_since = new Date().toISOString(); granted.push('premium'); } break;
-      case 'pet_pack': if (!state.pet_pack) { updates.pet_pack = true; granted.push('pet_pack'); } break;
-      case 'win_bling_pack': if (!state.win_bling_pack) { updates.win_bling_pack = true; granted.push('win_bling_pack'); } break;
-      case 'more_goblins_pack': if (!state.more_goblins_pack) { updates.more_goblins_pack = true; granted.push('more_goblins_pack'); } break;
-    }
+    const ent = PRICE_TO_ENTITLEMENT[pid];
+    if (!ent) continue;
+    if (ent === 'premium' && !state.has_premium) { updates.has_premium = true; updates.premium_since = new Date().toISOString(); granted.push('premium'); }
+    else if (ent === 'pet_pack' && !state.pet_pack) { updates.pet_pack = true; granted.push('pet_pack'); }
+    else if (ent === 'win_bling_pack' && !state.win_bling_pack) { updates.win_bling_pack = true; granted.push('win_bling_pack'); }
+    else if (ent === 'more_goblins_pack' && !state.more_goblins_pack) { updates.more_goblins_pack = true; granted.push('more_goblins_pack'); }
   }
-  if (!Object.keys(updates).length) return;
+  if (!granted.length) return;
   updates.updated_at = new Date().toISOString();
   const { error: upErr } = await supa.from('user_entitlements').update(updates).eq('user_id', userId);
   if (upErr) { console.error('Entitlement update failed:', upErr.message); return; }
-  for (const e of granted) {
-    await supa.from('entitlement_events').insert({ user_id: userId, payment_id: paymentRow.id, kind: 'grant', entitlement: e, detail: { payment_intent_id: paymentRow.payment_intent_id || null, stripe_session_id: paymentRow.stripe_session_id || null } });
+  for (const ent of granted) {
+    await supa.from('entitlement_events').insert({
+      user_id: userId,
+      payment_id: paymentRow.id,
+      kind: 'grant',
+      entitlement: ent,
+      detail: { payment_intent_id: paymentRow.payment_intent_id || null, stripe_session_id: paymentRow.stripe_session_id || null }
+    });
   }
-  console.log('[payments] Granted entitlements', granted, 'to user', userId, 'payment', paymentRow.id);
+  console.log('[payments] Granted entitlements', granted, 'user', userId, 'payment', paymentRow.id);
 }
 
 export async function recordCheckoutSessionIdentity(event) {
@@ -543,58 +557,4 @@ export async function markSubscriptionCanceledOrUpdated(event) {
 }
 
 // Handle customer.subscription.created as a recovery path: ensure entitlements granted
-export async function markSubscriptionCreated(event) {
-  const supa = getAdminSupabase();
-  if (!supa) throw new Error('Supabase admin client unavailable');
-  const sub = event?.data?.object || {};
-  const subscriptionId = sub.id;
-  const customerId = sub.customer || null;
-  if (!subscriptionId) return false;
-  // Try to find existing payment row via subscription id inside raw_session or raw_payment_intent
-  let paymentRow = null;
-  try {
-    const { data: rows } = await supa
-      .from('payments')
-      .select('*')
-      .order('id', { ascending: false })
-      .limit(50);
-    if (rows) {
-      for (const r of rows) {
-        const parse = (raw) => { if (!raw) return {}; if (typeof raw === 'string') { try { return JSON.parse(raw); } catch { return {}; } } return raw; };
-        const rs = parse(r.raw_session); const ri = parse(r.raw_payment_intent);
-        const sessObj = rs?.data?.object || rs?.object || {};
-        if (sessObj?.subscription === subscriptionId) { paymentRow = r; break; }
-      }
-    }
-  } catch {}
-  // If no payment row, create a minimal synthetic one (best-effort)
-  if (!paymentRow) {
-    let email = null;
-    if (customerId && STRIPE_SECRET_KEY) {
-      try {
-        const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
-        const cust = await stripe.customers.retrieve(customerId);
-        if (cust && typeof cust.email === 'string') email = cust.email;
-      } catch {}
-    }
-    const fields = {
-      stripe_event_id: event.id,
-      stripe_session_id: null,
-      payment_intent_id: null,
-      status: 'succeeded',
-      amount_total: null,
-      currency: sub.currency || null,
-      created_unix: sub.created || null,
-      customer_email: email,
-      customer_name: null,
-      account_email_supplied: null,
-      resolved_user_email: email,
-      raw_session: null,
-      raw_payment_intent: { synthetic_subscription: sub },
-      confirmed_at: new Date().toISOString()
-    };
-    try { paymentRow = await upsertPaymentMerge(fields); } catch (e) { console.warn('Synthetic payment row creation failed:', e.message); }
-  }
-  try { await tryGrantEntitlements(paymentRow); } catch (e) { console.warn('Entitlement grant after subscription.created failed:', e.message); }
-  return true;
-}
+// subscription.created no longer needed for synthetic rows; rely on session + intent events
