@@ -375,11 +375,28 @@ export async function recordCheckoutSessionIdentity(event) {
     }
   }
 
+  // If the session indicates paid and references a PI we may already have as succeeded, pre-mark confirmed_at
+  let preConfirmedAt = null;
+  try {
+    if (session.payment_status === 'paid' && paymentIntentId) {
+      // Best-effort: if an existing row for this PI is succeeded, mirror confirmed_at now
+      const supa = getAdminSupabase();
+      const { data: existingPiRow } = await supa
+        .from('payments')
+        .select('confirmed_at,status')
+        .eq('payment_intent_id', paymentIntentId)
+        .maybeSingle();
+      if (existingPiRow && (existingPiRow.status === 'succeeded') && existingPiRow.confirmed_at) {
+        preConfirmedAt = existingPiRow.confirmed_at;
+      }
+    }
+  } catch {}
+
   const fields = {
     stripe_event_id: event.id,
     stripe_session_id: sessionId,
     payment_intent_id: mergePaymentIntentId,
-    status: 'session_completed',
+    status: preConfirmedAt ? 'succeeded' : 'session_completed',
     amount_total: amount,
     currency,
     created_unix: createdUnix,
@@ -388,7 +405,7 @@ export async function recordCheckoutSessionIdentity(event) {
     account_email_supplied: supplied,
     resolved_user_email: supplied || email || null,
     raw_session: enrichedRaw,
-    confirmed_at: null
+    confirmed_at: preConfirmedAt
   };
   let paymentRow = null;
   try {
@@ -397,6 +414,16 @@ export async function recordCheckoutSessionIdentity(event) {
     console.error('Session upsert failed:', e.message);
     throw e;
   }
+  // Opportunistic confirmation: if session is paid and preConfirmedAt was not set via PI row, mark confirmed_at now.
+  try {
+    if (session.payment_status === 'paid' && !paymentRow.confirmed_at) {
+      const supa = getAdminSupabase();
+      const nowIso = new Date().toISOString();
+      await supa.from('payments').update({ confirmed_at: nowIso, status: 'succeeded' }).eq('id', paymentRow.id);
+      paymentRow.confirmed_at = nowIso;
+      paymentRow.status = 'succeeded';
+    }
+  } catch {}
   try { await tryGrantEntitlements(paymentRow); } catch (e) { console.warn('Entitlement grant after session failed:', e.message); }
   try { appendPaymentRecord({ kind: 'session', stripe_event_id: event.id, payment_intent_id: paymentIntentId, stripe_session_id: sessionId, amount, currency, ts: new Date().toISOString() }); } catch {}
   return true;
@@ -483,12 +510,11 @@ const PRICE_TO_ENTITLEMENT = Object.entries({
 }).reduce((acc,[k,v]) => { if (v) acc[v] = k; return acc; }, {});
 
 async function ensureUserEntitlementsRow(supa, userId) {
-  const { data, error } = await supa.from('user_entitlements').select('user_id').eq('user_id', userId).limit(1);
+  // Use upsert to avoid race conditions creating the row concurrently
+  const { error } = await supa
+    .from('user_entitlements')
+    .upsert({ user_id: userId }, { onConflict: 'user_id' });
   if (error) throw error;
-  if (!data || !data.length) {
-    const { error: insErr } = await supa.from('user_entitlements').insert({ user_id: userId });
-    if (insErr) throw insErr;
-  }
 }
 
 function extractLineItemPriceIds(intent) {
