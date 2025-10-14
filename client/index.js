@@ -1010,6 +1010,12 @@ window.addEventListener('blur', () => {
 function onopen() {
     console.log("WebSocket connection established");
     // TODO: maybe useful to send an introductory message, once the goblin is loaded
+    // Clear any existing local drawing lines upon joining a (new) lobby
+    // This ensures previous lobby's drawings don't persist across lobby boundaries.
+    if (you && Array.isArray(you.lines)) {
+        you.lines = [];
+        try { __clearOwnerLines(you.id); } catch {}
+    }
 }
 function onmessage(event) {
     let data;
