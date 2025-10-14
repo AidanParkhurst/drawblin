@@ -126,18 +126,18 @@ Result: No dependency on event ordering, minimal duplication, and aggressive use
 
 async function extractPriceIdsFromSession(session) {
   const found = new Set();
-  if (!session) return [];
-  const lineItems = session.line_items?.data || session.line_items?.data || [];
+  if (!session || typeof session !== 'object') return [];
+  const lineItems = (session.line_items && Array.isArray(session.line_items.data)) ? session.line_items.data : [];
   for (const li of lineItems) {
     const pid = li?.price?.id;
     if (pid && pid.startsWith('price_')) found.add(pid);
   }
-  const displayItems = session.display_items || [];
+  const displayItems = Array.isArray(session.display_items) ? session.display_items : [];
   for (const di of displayItems) {
     const pid = di?.price?.id || di?.plan?.id;
     if (pid && pid.startsWith('price_')) found.add(pid);
   }
-  const md = session.metadata || {};
+  const md = session.metadata && typeof session.metadata === 'object' ? session.metadata : {};
   for (const v of Object.values(md)) if (typeof v === 'string' && v.startsWith('price_')) found.add(v);
   return Array.from(found);
 }
@@ -169,13 +169,29 @@ async function enrichSessionIfNeeded(sessionId) {
 async function upsertPaymentMerge(fields) {
   const supa = getAdminSupabase();
   if (!supa) throw new Error('Supabase admin client unavailable');
-  // Split conflict key preference
   const conflictKey = fields.payment_intent_id ? 'payment_intent_id' : 'stripe_session_id';
+  const selKey = conflictKey;
+  const selVal = fields[selKey];
+  let existing = null;
+  if (selVal) {
+    try { const { data } = await supa.from('payments').select('*').eq(selKey, selVal).maybeSingle(); existing = data || null; } catch {}
+  }
+  // Merge logic: do not overwrite a succeeded status with session_completed.
+  if (existing) {
+    const statusPriority = { succeeded: 2, session_completed: 1 };
+    if (existing.status && fields.status && statusPriority[existing.status] > statusPriority[fields.status]) {
+      fields.status = existing.status; // keep higher status
+      fields.confirmed_at = existing.confirmed_at || fields.confirmed_at || null;
+    }
+    // Preserve earlier raw blobs if new data lacks them
+    if (!fields.raw_session && existing.raw_session) fields.raw_session = existing.raw_session;
+    if (!fields.raw_payment_intent && existing.raw_payment_intent) fields.raw_payment_intent = existing.raw_payment_intent;
+    // Preserve resolved user id if already set
+    if (existing.resolved_user_id && !fields.resolved_user_id) fields.resolved_user_id = existing.resolved_user_id;
+    if (existing.resolved_user_email && !fields.resolved_user_email) fields.resolved_user_email = existing.resolved_user_email;
+  }
   const { error } = await supa.from('payments').upsert(fields, { onConflict: conflictKey });
   if (error) throw new Error(error.message);
-  // Fetch final merged row (id + raw blobs + user) for entitlement grant stage
-  const selKey = fields.payment_intent_id ? 'payment_intent_id' : 'stripe_session_id';
-  const selVal = fields[selKey];
   const { data } = await supa.from('payments').select('*').eq(selKey, selVal).maybeSingle();
   return data || null;
 }
@@ -260,12 +276,31 @@ export async function recordCheckoutSessionIdentity(event) {
   const email = coalesceEmail(session, null);
   const customerName = session.customer_details?.name || null;
 
-  // Extract price IDs (non-expanded) and store them on raw_session for later
-  let priceIds = extractPriceIdsFromSession(session);
-  // Attempt expand if empty
+  // Extract price IDs (non-expanded) and store them on raw_session for later.
+  let priceIds = await extractPriceIdsFromSession(session);
+  // Attempt expand if empty (network best-effort)
   if (!priceIds.length && STRIPE_SECRET_KEY && sessionId) {
     const expanded = await enrichSessionIfNeeded(sessionId);
-    if (expanded) priceIds = extractPriceIdsFromSession(expanded);
+    if (expanded) {
+      session.line_items = expanded.line_items; // copy for persistence
+      priceIds = await extractPriceIdsFromSession(expanded);
+    }
+  }
+  // Subscription fallback: if still no price ids but subscription id exists, fetch subscription items
+  if (!priceIds.length && STRIPE_SECRET_KEY && session.subscription) {
+    try {
+      const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
+      const sub = await stripe.subscriptions.retrieve(session.subscription, { expand: ['items.data.price'] });
+      const items = Array.isArray(sub?.items?.data) ? sub.items.data : [];
+      for (const it of items) {
+        const pid = it?.price?.id;
+        if (pid && pid.startsWith('price_')) priceIds.push(pid);
+      }
+    } catch (e) { console.warn('Subscription fetch failed (non-fatal):', e.message); }
+  }
+  // If still empty and mode subscription, optimistic premium grant fallback
+  if (!priceIds.length && session.mode === 'subscription' && typeof STRIPE_PRICE_PREMIUM_SUB === 'string') {
+    priceIds.push(STRIPE_PRICE_PREMIUM_SUB);
   }
   priceIds = Array.from(new Set(priceIds));
   const enrichedRaw = { ...event, extracted_price_ids: priceIds };
@@ -305,9 +340,41 @@ export async function markPaymentIntentSucceeded(event) {
   const amount = intent.amount_received ?? intent.amount ?? null;
   const currency = intent.currency ?? null;
   const createdUnix = intent.created ?? null;
-  const email = coalesceEmail(null, intent);
+  let email = coalesceEmail(null, intent);
   const customerName = intent.charges?.data?.[0]?.billing_details?.name || null;
-  const priceIds = extractPriceIdsFromIntent(intent);
+  let priceIds = extractPriceIdsFromIntent(intent);
+  // If subscription related and we still lack price ids, attempt session or subscription lookups.
+  // First: if payment_details.order_reference looks like a session id, try retrieving session.
+  const orderRef = intent?.payment_details?.order_reference || null;
+  if (!priceIds.length && orderRef && STRIPE_SECRET_KEY) {
+    try {
+      const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
+      const sess = await stripe.checkout.sessions.retrieve(orderRef, { expand: ['line_items'] });
+      priceIds.push(...await extractPriceIdsFromSession(sess));
+      if (!email) email = coalesceEmail(sess, null);
+      // If subscription present on session, fetch subscription items
+      if (sess.subscription && !priceIds.length) {
+        try {
+          const sub = await stripe.subscriptions.retrieve(sess.subscription, { expand: ['items.data.price'] });
+          const items = Array.isArray(sub?.items?.data) ? sub.items.data : [];
+          for (const it of items) { const pid = it?.price?.id; if (pid && pid.startsWith('price_')) priceIds.push(pid); }
+        } catch (e2) { console.warn('Sub fetch during intent fallback failed:', e2.message); }
+      }
+    } catch (e) { /* swallow */ }
+  }
+  // Final optimistic fallback for subscription intents
+  if (!priceIds.length && /subscription/i.test(intent.description || '') && typeof STRIPE_PRICE_PREMIUM_SUB === 'string') {
+    priceIds.push(STRIPE_PRICE_PREMIUM_SUB);
+  }
+  // Customer email fetch if still missing
+  if (!email && intent.customer && STRIPE_SECRET_KEY) {
+    try {
+      const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
+      const cust = await stripe.customers.retrieve(intent.customer);
+      if (cust && typeof cust.email === 'string') email = cust.email;
+    } catch {}
+  }
+  priceIds = Array.from(new Set(priceIds));
   const enrichedRaw = { ...event, extracted_price_ids: priceIds };
   const fields = {
     stripe_event_id: event.id,
