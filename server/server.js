@@ -33,6 +33,18 @@ app.use((req, res, next) => {
     }
 });
 
+// Lightweight CORS for API endpoints (dev and prod cross-origin static hosting)
+app.use('/api', (req, res, next) => {
+    // Allow all origins; requests require Authorization token anyway
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(204);
+    }
+    next();
+});
+
 app.get('/', (req, res) => {
     res.setHeader('Content-Type', 'text/html');
     res.end(`
