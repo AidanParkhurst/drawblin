@@ -5,6 +5,7 @@ import express from 'express';
 import Stripe from 'stripe';
 import { STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, summarizeEnv } from './env.js';
 import { recordCheckoutSessionIdentity, markPaymentIntentSucceeded, markSubscriptionCanceledOrUpdated } from './payments.js';
+import { getAdminSupabase } from './supabase.js';
 import url from 'url';
 import FreeDrawLobby from './lobbies/FreeDrawLobby.js';
 import QuickDrawLobby from './lobbies/QuickDrawLobby.js';
@@ -86,6 +87,110 @@ app.post('/webhook/stripe', async (req, res) => {
         return res.status(500).json({ status: 'error', message: e.message });
     }
     res.json({ received: true });
+});
+
+// --- Auth helper (Supabase access token -> user) -----------------------------------------
+async function authUserFromRequest(req) {
+    const authHeader = req.headers['authorization'] || '';
+    const m = authHeader.match(/^Bearer (.+)$/i);
+    if (!m) return null;
+    const token = m[1];
+    try {
+        const supa = getAdminSupabase();
+        if (!supa) return null;
+        const { data: { user }, error } = await supa.auth.getUser(token);
+        if (error || !user) return null;
+        return user;
+    } catch { return null; }
+}
+
+// Utility: find latest subscription + customer for a user via payments table
+async function findLatestSubscriptionRecord(userId) {
+    const supa = getAdminSupabase();
+    if (!supa) return null;
+    try {
+        const { data, error } = await supa
+            .from('payments')
+            .select('id, raw_session, raw_payment_intent')
+            .eq('resolved_user_id', userId)
+            .order('id', { ascending: false })
+            .limit(25);
+        if (error) return null;
+        for (const row of data || []) {
+            const parse = (raw) => { if (!raw) return null; if (typeof raw === 'string') { try { return JSON.parse(raw); } catch { return null; } } return raw; };
+            const sess = parse(row.raw_session);
+            const obj = sess?.data?.object || sess?.object || {};
+            if (obj && obj.subscription && obj.customer) {
+                return { subscriptionId: obj.subscription, customerId: obj.customer, session: obj };
+            }
+        }
+    } catch {}
+    return null;
+}
+
+// GET subscription status
+app.get('/api/subscription/status', async (req, res) => {
+    if (!stripe) return res.status(500).json({ error: 'Stripe not configured' });
+    const user = await authUserFromRequest(req);
+    if (!user) return res.status(401).json({ error: 'Unauthorized' });
+    const rec = await findLatestSubscriptionRecord(user.id);
+    if (!rec) return res.json({ subscription: null });
+    try {
+        const sub = await stripe.subscriptions.retrieve(rec.subscriptionId);
+        return res.json({
+            subscription: {
+                id: sub.id,
+                status: sub.status,
+                cancel_at_period_end: sub.cancel_at_period_end,
+                current_period_end: sub.current_period_end,
+                canceled_at: sub.canceled_at,
+                plan_price: sub.items?.data?.[0]?.price?.id || null
+            }
+        });
+    } catch (e) {
+        return res.status(404).json({ error: 'Subscription not found' });
+    }
+});
+
+// POST cancel subscription (sets cancel_at_period_end=true)
+app.post('/api/subscription/cancel', async (req, res) => {
+    if (!stripe) return res.status(500).json({ error: 'Stripe not configured' });
+    const user = await authUserFromRequest(req);
+    if (!user) return res.status(401).json({ error: 'Unauthorized' });
+    const rec = await findLatestSubscriptionRecord(user.id);
+    if (!rec) return res.status(404).json({ error: 'No active subscription found' });
+    try {
+        const updated = await stripe.subscriptions.update(rec.subscriptionId, { cancel_at_period_end: true });
+        return res.json({
+            subscription: {
+                id: updated.id,
+                status: updated.status,
+                cancel_at_period_end: updated.cancel_at_period_end,
+                current_period_end: updated.current_period_end
+            }
+        });
+    } catch (e) {
+        return res.status(500).json({ error: 'Stripe subscription update failed', detail: e?.message || String(e) });
+    }
+});
+
+// POST create billing portal session (optional manage page)
+app.post('/api/subscription/portal', async (req, res) => {
+    if (!stripe) return res.status(500).json({ error: 'Stripe not configured' });
+    const user = await authUserFromRequest(req);
+    if (!user) return res.status(401).json({ error: 'Unauthorized' });
+    const rec = await findLatestSubscriptionRecord(user.id);
+    if (!rec) return res.status(404).json({ error: 'No subscription found' });
+    try {
+        const returnUrl = (req.headers['origin'] || '').startsWith('http') ? `${req.headers['origin']}/account.html` : 'https://drawbl.in/account.html';
+        const session = await stripe.billingPortal.sessions.create({
+            customer: rec.customerId,
+            return_url: returnUrl
+        });
+        return res.json({ url: session.url });
+    } catch (e) {
+        return res.status(500).json({ error: 'Portal session creation failed', detail: e?.message || String(e) });
+    }
 });
 
 // Create HTTP server from Express (so WebSocket can share the port)

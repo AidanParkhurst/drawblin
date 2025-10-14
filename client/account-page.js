@@ -65,9 +65,49 @@ async function render() {
     renewalText = 'Renews automatically';
   }
   const cancelBtn = ents?.has_premium ? el('button', { class: 'btn-outline', text: 'Cancel membership' }) : null;
+  let manageBtn = null;
   if (cancelBtn) {
-    cancelBtn.addEventListener('click', () => {
-      alert('To cancel, use the link in your checkout email (from Stripe). Or email us at: support@drawbl.in');
+    cancelBtn.addEventListener('click', async () => {
+      cancelBtn.disabled = true;
+      cancelBtn.textContent = 'Cancelling...';
+      try {
+        const token = (await getClient())?.auth?.session()?.access_token;
+        const resp = await fetch('/api/subscription/cancel', { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } });
+        if (!resp.ok) {
+          const j = await resp.json().catch(()=>({}));
+            alert('Cancel failed: ' + (j.error || resp.status));
+        } else {
+          const j = await resp.json();
+          alert('Subscription set to cancel at period end.');
+          // Re-render to reflect state
+          await render();
+          return;
+        }
+      } catch (e) {
+        alert('Cancel error: ' + (e?.message || e));
+      } finally {
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = 'Cancel membership';
+      }
+    });
+    manageBtn = el('button', { class: 'btn-outline', text: 'Manage billing' });
+    manageBtn.addEventListener('click', async () => {
+      manageBtn.disabled = true; manageBtn.textContent = 'Opening portal...';
+      try {
+        const token = (await getClient())?.auth?.session()?.access_token;
+        const resp = await fetch('/api/subscription/portal', { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } });
+        if (!resp.ok) {
+          const j = await resp.json().catch(()=>({}));
+          alert('Portal error: ' + (j.error || resp.status));
+        } else {
+          const j = await resp.json();
+          if (j.url) window.location.href = j.url;
+        }
+      } catch (e) {
+        alert('Portal error: ' + (e?.message || e));
+      } finally {
+        manageBtn.disabled = false; manageBtn.textContent = 'Manage billing';
+      }
     });
   }
   const memberRow = el('div', { class: 'account-card account-card--row account-row' }, [
@@ -75,7 +115,8 @@ async function render() {
       el('div', { class: 'account-row-title', text: premiumText }),
       el('div', { class: 'account-row-sub', text: renewalText }),
     ]),
-    cancelBtn
+    cancelBtn,
+    manageBtn
   ].filter(Boolean));
 
   // Packs as separate cards; attempt to resolve purchase dates from entitlement_events
