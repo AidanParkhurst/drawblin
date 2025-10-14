@@ -1,70 +1,10 @@
-Drawblin
-=========
+<h1><img src="./client/assets/flaticon.png" width=50>
+rawblins!</h1>
 
-Static front-end (in `client/`) built with Vite and deployed to GitHub Pages via `gh-pages`.
+<h3><i>A silly, social drawing game</i></h3>
+<p>Drawblins is a multiplayer, <a href="https://p5js.org/">p5.js</a> browser game, where players control a little goblin character that can traverse the whole screen. Using the mouse, players can draw anywhere in the radius around their goblin. There's also a little chat to socialize with other players.</p>
+<p>No account is required, but creating an account (auth powered by <a href="https://supabase.com/">Supabase</a>) allows players to set a custom name, and host private games in their "house". (A private URL)</p>
+<p>The game is totally free to play and ad free, but we offer small cosmetic purchases (payments managed through <a href="stripe.com">Stripe</a>) for players to make their goblin look even cooler, and support the costs of keeping the game alive!</p>
+<p>Lastly, the game is 100% open source! All of the code (both front and backend) is here, and in fact the frontend is hosted through github pages (the backend is an <a href="https://www.oracle.com/cloud/">Oracle Cloud VPS</a>). I'm happy for other people to use this project, but do NOT impersonate Drawblins publicly, and do NOT use any of the art/assets for commercial purposes.</p>
 
-Multi-page build
-----------------
-We currently ship two HTML entry points:
-
-* `index.html` (main app)
-* `login.html` (auth UI)
-
-Vite auto-detects HTML files in the project root, but we explicitly declare them in `vite.config.js` (`build.rollupOptions.input`) to guarantee both are emitted during production builds and deployments. If you add a new top-level page (e.g. `about.html`), add it to the `input` map in `vite.config.js` as well:
-
-```
-input: {
-  main: path.resolve(rootDir, 'index.html'),
-  login: path.resolve(rootDir, 'login.html'),
-  about: path.resolve(rootDir, 'about.html'),
-}
-```
-
-Deploy
-------
-```
-npm run deploy
-```
-This runs a production build to `dist/` and publishes that folder to the `gh-pages` branch.
-
-## Payments & Entitlements
-
-The server supports Stripe webhooks to grant user entitlements (no generic currency balance). Two-stage flow:
-1. `checkout.session.completed` records user identity (email mapping).
-2. `payment_intent.succeeded` confirms and applies entitlements.
-
-Configure environment variables (see `.env.example`):
-
-```
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_KEY=service_role_key
-
-# Map these to your Stripe Price IDs
-STRIPE_PRICE_PREMIUM_SUB=price_XXXXXXXXXXXXXXXX
-STRIPE_PRICE_PET_PACK=price_XXXXXXXXXXXXXXXX
-STRIPE_PRICE_WIN_BLING_PACK=price_XXXXXXXXXXXXXXXX
-STRIPE_PRICE_MORE_GOBLINS_PACK=price_XXXXXXXXXXXXXXXX
-```
-
-Run the SQL in `server/sql/entitlements_schema.sql` inside Supabase to create:
-- `payments` (lifecycle records)
-- `user_entitlements` (current flags)
-- `entitlement_events` (audit trail)
-
-Webhook endpoint: `POST /webhook/stripe` (raw body required). Use Stripe CLI:
-```
-stripe listen --forward-to localhost:3000/webhook/stripe
-```
-
-Add the price IDs to product metadata / line items so they can be detected. The server infers entitlements by scanning `price_` values in metadata or charges.
-
-Entitlement flags available:
-- `has_premium` (subscription style)
-- `pet_pack`
-- `win_bling_pack`
-- `more_goblins_pack`
-
-Future improvements: implement revocation for canceled subscriptions, and handle refunds via `charge.refunded`.
-Auth configuration details live in `AUTH.md`.
+<h3><a href='https://drawbl.in'>Click Here to Play! (https://drawbl.in)</a></h3>
