@@ -4,6 +4,7 @@ import ProfileDisplay from './profile_display.js';
 import BasicProfileDisplay from './profile_display_basic.js';
 import { isAuthConfigured, getUser, ready as authReady } from './auth.js';
 import { spawnBurst } from './burst.js';
+import { fetchEntitlements, hasPremium, hasPetPack, hasBlingPack } from './entitlements.js';
 
 class PlayerList {
     constructor(circleSize = 50, spacing = 20) {
@@ -21,15 +22,32 @@ class PlayerList {
     }
 
     async _initAuthGate() {
-        try { if (isAuthConfigured()) await authReady(); } catch {}
+        try {
+            if (isAuthConfigured()) {
+                await authReady();
+                // If signed in, prime entitlements so UI choice can reflect packs
+                if (getUser()) {
+                    try { await fetchEntitlements(); } catch {}
+                }
+            }
+        } catch {}
         this._maybeSwapProfileDisplay();
-        // Listen for auth changes
-        window.addEventListener('auth:user-changed', () => this._maybeSwapProfileDisplay());
+        // Listen for auth changes; re-fetch entitlements and reevaluate
+        window.addEventListener('auth:user-changed', async () => {
+            try {
+                if (isAuthConfigured() && getUser()) {
+                    await fetchEntitlements(true);
+                }
+            } catch {}
+            this._maybeSwapProfileDisplay();
+        });
     }
 
     _maybeSwapProfileDisplay() {
         const authed = isAuthConfigured() && !!getUser();
-        if (authed && !this._useAdvanced) {
+        // Only use advanced profile if user has premium, pet pack, or bling pack
+        const hasAdvancedEntitlement = authed && (hasPremium() || hasPetPack() || hasBlingPack());
+        if (hasAdvancedEntitlement && !this._useAdvanced) {
             // Swap to advanced
             const prev = this.profileDisplay;
             const adv = new ProfileDisplay();
@@ -39,7 +57,7 @@ class PlayerList {
             }
             this.profileDisplay = adv;
             this._useAdvanced = true;
-        } else if (!authed && this._useAdvanced) {
+        } else if ((!hasAdvancedEntitlement) && this._useAdvanced) {
             // Swap to basic
             const prev = this.profileDisplay;
             const basic = new BasicProfileDisplay();
