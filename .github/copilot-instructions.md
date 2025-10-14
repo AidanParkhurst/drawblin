@@ -29,12 +29,6 @@ Inbound (client → server): `update`, `chat` (content), `house_switch_mode` (ow
 - Auth optional: guard any Supabase-dependent logic with `isAuthConfigured()` / `getUser()`. Do not break guest flow if env vars missing.
 - House logic: detect via URL path `/house` + query param `u` (short slug). Keep slug creation consistent: lowercase uuid without dashes, first 12 chars (`shortUid` server, mirror in client when comparing).
 
-### Payments & Entitlements (Server)
-Stripe webhook endpoint `/webhook/stripe` expects raw body (custom body collector before JSON middleware). Two event handlers:
-- `checkout.session.completed` → `recordCheckoutSessionIdentity()` (stores mapping + potential price IDs; may pre-seed entitlements)
-- `payment_intent.succeeded` → `markPaymentIntentSucceeded()` (finalize and apply entitlement grants)
-Entitlement mapping uses env-injected Stripe Price IDs → flags (`user_entitlements`). Future revocations not yet implemented.
-
 ### Environment & Build Workflows
 Dev client: `npm run dev` (Vite serves from `client/` root). Multi-page: entries declared in `vite.config.js` (add new HTML pages to `rollupOptions.input`). Build: `npm run build` outputs to `dist/`. Deploy static site to GitHub Pages: `npm run deploy` (publishes `dist/` via `gh-pages`, homepage set to `./` for relative paths).
 Server local run: `npm run server` (starts Express+ws on PORT or 3000). For full local integration update `client/network.js` BASE_URL to `ws://localhost:3000` (currently production URL). Keep this toggle minimal (consider env gating if modifying).

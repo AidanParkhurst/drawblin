@@ -90,7 +90,8 @@ function extractAccountEmail(session) {
   for (const f of cf) {
     if (!f) continue;
     const key = (f.key || '').toLowerCase();
-    if (['account_email','drawblin_email','user_email'].includes(key)) {
+    // Accept several variants including the configured 'drawblinsaccountemail'
+    if (['account_email','drawblin_email','drawblinsaccountemail','drawblins_account_email','user_email','drawblins_email'].includes(key)) {
       const v = f.text?.value || null;
       if (v) return v;
     }
@@ -220,17 +221,20 @@ async function tryGrantEntitlements(paymentRow) {
   const supa = getAdminSupabase();
   if (!supa) return;
   const userId = await ensureResolvedUser(supa, paymentRow);
-  if (!userId) return; // still cannot map to user; stop
+  if (!userId) return;
 
-  // Price IDs could appear in raw_session (extracted_price_ids), raw_payment_intent, or we can re-expand session.
   let priceIds = [];
-  const rawSession = paymentRow.raw_session?.data?.object || paymentRow.raw_session?.object || paymentRow.raw_session?.data?.object || {};
-  const rawIntent = paymentRow.raw_payment_intent?.data?.object || paymentRow.raw_payment_intent?.object || {};
-  // Use previously enriched list if present
-  if (Array.isArray(paymentRow.raw_session?.extracted_price_ids)) priceIds.push(...paymentRow.raw_session.extracted_price_ids);
+  const parseRaw = (raw) => { if (!raw) return {}; if (typeof raw === 'string') { try { return JSON.parse(raw); } catch { return {}; } } return raw; };
+  const rawSessionContainer = parseRaw(paymentRow.raw_session);
+  const rawIntentContainer = parseRaw(paymentRow.raw_payment_intent);
+  const rawSession = rawSessionContainer?.data?.object || rawSessionContainer?.object || {};
+  const rawIntent = rawIntentContainer?.data?.object || rawIntentContainer?.object || {};
+  const extractedSessionIds = rawSessionContainer?.extracted_price_ids || paymentRow.raw_session?.extracted_price_ids;
+  if (Array.isArray(extractedSessionIds)) priceIds.push(...extractedSessionIds);
+  const extractedIntentIds = rawIntentContainer?.extracted_price_ids || paymentRow.raw_payment_intent?.extracted_price_ids;
+  if (Array.isArray(extractedIntentIds)) priceIds.push(...extractedIntentIds);
   priceIds.push(...extractPriceIdsFromSession(rawSession));
   priceIds.push(...extractPriceIdsFromIntent(rawIntent));
-  // If still empty and we have a session id, attempt enrichment
   if (!priceIds.length && paymentRow.stripe_session_id) {
     const expanded = await enrichSessionIfNeeded(paymentRow.stripe_session_id);
     priceIds.push(...extractPriceIdsFromSession(expanded));
@@ -238,15 +242,12 @@ async function tryGrantEntitlements(paymentRow) {
   priceIds = Array.from(new Set(priceIds.filter(p => typeof p === 'string' && p.startsWith('price_'))));
   if (!priceIds.length) return;
 
-  // Ensure entitlement row
   await ensureUserEntitlementsRow(supa, userId);
-  // Fetch current entitlement state
   const { data: current } = await supa.from('user_entitlements').select('has_premium, pet_pack, win_bling_pack, more_goblins_pack').eq('user_id', userId).maybeSingle();
   const state = current || {};
   const updates = {}; const granted = [];
   for (const pid of priceIds) {
-    const ent = PRICE_TO_ENTITLEMENT[pid];
-    if (!ent) continue;
+    const ent = PRICE_TO_ENTITLEMENT[pid]; if (!ent) continue;
     switch (ent) {
       case 'premium': if (!state.has_premium) { updates.has_premium = true; updates.premium_since = new Date().toISOString(); granted.push('premium'); } break;
       case 'pet_pack': if (!state.pet_pack) { updates.pet_pack = true; granted.push('pet_pack'); } break;
@@ -254,14 +255,14 @@ async function tryGrantEntitlements(paymentRow) {
       case 'more_goblins_pack': if (!state.more_goblins_pack) { updates.more_goblins_pack = true; granted.push('more_goblins_pack'); } break;
     }
   }
-  if (!Object.keys(updates).length) return; // nothing new to grant
+  if (!Object.keys(updates).length) return;
   updates.updated_at = new Date().toISOString();
   const { error: upErr } = await supa.from('user_entitlements').update(updates).eq('user_id', userId);
   if (upErr) { console.error('Entitlement update failed:', upErr.message); return; }
   for (const e of granted) {
-    // Idempotent audit insert: rely on separate unique (not defined here) or accept duplicates minimal risk.
-    await supa.from('entitlement_events').insert({ user_id: userId, payment_id: paymentRow.id, kind: 'grant', entitlement: e, detail: { payment_intent_id: paymentRow.payment_intent_id || null } });
+    await supa.from('entitlement_events').insert({ user_id: userId, payment_id: paymentRow.id, kind: 'grant', entitlement: e, detail: { payment_intent_id: paymentRow.payment_intent_id || null, stripe_session_id: paymentRow.stripe_session_id || null } });
   }
+  console.log('[payments] Granted entitlements', granted, 'to user', userId, 'payment', paymentRow.id);
 }
 
 export async function recordCheckoutSessionIdentity(event) {
@@ -305,10 +306,42 @@ export async function recordCheckoutSessionIdentity(event) {
   priceIds = Array.from(new Set(priceIds));
   const enrichedRaw = { ...event, extracted_price_ids: priceIds };
 
+  // If the session lacks a payment_intent_id (common for subscriptions), attempt to locate an
+  // existing payment row created earlier by payment_intent.succeeded that references this session
+  // via payment_details.order_reference prefix.
+  let mergePaymentIntentId = paymentIntentId;
+  if (!mergePaymentIntentId) {
+    try {
+      // Query for a recent payment row whose raw_payment_intent contains order_reference==session id prefix
+      const likePattern = `%"order_reference":"${sessionId?.slice(0, 24) || ''}`; // partial to be safe
+      const { data: existingRows } = await supa
+        .from('payments')
+        .select('id,payment_intent_id,raw_payment_intent,status')
+        .is('stripe_session_id', null)
+        .not('payment_intent_id', 'is', null)
+        .order('id', { ascending: false })
+        .limit(25);
+      if (existingRows) {
+        for (const row of existingRows) {
+          try {
+            const raw = row.raw_payment_intent;
+            const orderRef = raw?.data?.object?.payment_details?.order_reference || raw?.object?.payment_details?.order_reference;
+            if (orderRef && sessionId && orderRef.startsWith(sessionId.slice(0, 20))) {
+              mergePaymentIntentId = row.payment_intent_id;
+              break;
+            }
+          } catch {}
+        }
+      }
+    } catch (e) {
+      console.warn('Session merge lookup failed:', e.message);
+    }
+  }
+
   const fields = {
     stripe_event_id: event.id,
     stripe_session_id: sessionId,
-    payment_intent_id: paymentIntentId,
+    payment_intent_id: mergePaymentIntentId,
     status: 'session_completed',
     amount_total: amount,
     currency,
