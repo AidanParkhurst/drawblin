@@ -35,23 +35,14 @@
     .identity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
     @media (max-width: 800px) { .identity-grid { grid-template-columns: 1fr; } }
   </style>
-  <script type="module" crossorigin src="./assets/account-BEJH7VGQ.js"></script>
-  <link rel="modulepreload" crossorigin href="./assets/auth-C3ToxM_q.js">
-  <link rel="modulepreload" crossorigin href="./assets/entitlements-C9ZtqP9A.js">
+  <script type="module" crossorigin src="./assets/account-C1GyLN6t.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/auth-Newij3tP.js">
+  <link rel="modulepreload" crossorigin href="./assets/entitlements-DPAPxLTl.js">
   <link rel="stylesheet" crossorigin href="./assets/index-dbebP8V7.css">
   <link rel="stylesheet" crossorigin href="./assets/shop-DZoH9-I4.css">
 </head>
 <body class="account-body">
-  <a id="login-button" href="./login">Login</a>
-  <div id="account-menu" style="display:none;">
-      <div class="account-menu__name-label">Display name</div>
-      <input id="account-name-input" class="account-menu__input" type="text" maxlength="40" placeholder="Your goblin name" />
-      <div class="account-menu__buttons">
-      <button id="account-open-shop" class="account-menu__action">Shop</button>
-          <a id="account-support" class="account-menu__action" href="mailto:support@drawbl.in">Contact Support</a>
-      <button id="account-signout" class="account-menu__action account-menu__action--danger">Sign out</button>
-      </div>
-  </div>
+  <!-- Account controls are mounted dynamically by auth.js -->
 
   <main class="account-main">
     <header>
