@@ -56,7 +56,7 @@ export function onHouseModeSelected(handler) {
 
 function modeTitle(mode) {
   switch ((mode || '').toLowerCase()) {
-  case 'quickdraw': return 'Quick Draw';
+  case 'quickdraw': return 'Team Draw';
   case 'guessinggame': return 'Guessing Game';
   case 'freedraw':
   default: return 'Free Draw';
