@@ -1,4 +1,4 @@
-import { sendMessage } from "./network.js";
+import { sendMessage, ws, getApiBase } from "./network.js";
 import { you, goblins } from "./index.js";
 
 // HTML-based Chat overlay that sits atop the canvas (bottom-right)
@@ -16,6 +16,8 @@ class Chat {
 
         // Build UI once
         this.#mount(width, height);
+        // Try to fetch MOTD once the UI mounts
+        this.#fetchMOTD();
         this.#attachGlobalHandlers();
         this.#applyUIColor();
     }
@@ -40,7 +42,8 @@ class Chat {
         this.#renderMessage(user, content);
     }
 
-    // Send local message: show speech bubble and send to server (wait for echo; don't add locally)
+    // Send local message: show speech bubble and send to server.
+    // If not connected to a lobby, immediately add to chat locally (offline mode).
     sendLocal(text) {
         const msg = (text || "").trim();
         if (!msg) return;
@@ -48,6 +51,11 @@ class Chat {
             // local say bubble
             if (you && typeof you.say === 'function') you.say(msg);
             // network send
+            const connected = ws && ws.readyState === WebSocket.OPEN;
+            if (!connected) {
+                // No lobby connection: append immediately to chat box
+                this.addMessage({ user: you || null, content: msg });
+            }
             sendMessage({ type: 'chat', content: msg });
         } finally {
             this.inputEl.value = '';
@@ -56,6 +64,22 @@ class Chat {
     }
 
     // ----- Private helpers -----
+    async #fetchMOTD() {
+        try {
+            // Fetch from backend API (dev: localhost:3000, prod: api.drawbl.in)
+            const res = await fetch(`${getApiBase()}/api/motd`, { method: 'GET' });
+            if (!res.ok) return;
+            const data = await res.json();
+            const msg = (data && data.message) ? String(data.message) : '';
+            if (msg) {
+                // System message: use player's UI color if available, otherwise a readable default
+                const sysUser = { ui_color: [180,180,180] };
+                this.addMessage({ user: sysUser, content: msg });
+            }
+        } catch (_) {
+            // Silent fail; MOTD is optional
+        }
+    }
     #mount(width, height) {
         // Avoid duplicate mount
         if (document.getElementById('chat')) {

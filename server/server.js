@@ -11,6 +11,8 @@ import FreeDrawLobby from './lobbies/FreeDrawLobby.js';
 import QuickDrawLobby from './lobbies/QuickDrawLobby.js';
 import GuessingGameLobby from './lobbies/GuessingGameLobby.js';
 import { incrLobby } from './metrics.js';
+import path from 'path';
+import { readFileSync } from 'fs';
 
 const PORT = process.env.PORT || 3000; 
 const HOST = process.env.HOST || '0.0.0.0'; // Bind to all interfaces by default (helps on Ubuntu/cloud)
@@ -53,6 +55,22 @@ app.get('/', (req, res) => {
         <p>Webhook: POST /webhook/stripe</p>
         <pre>Env: ${JSON.stringify(summarizeEnv(), null, 2)}</pre>
     `);
+});
+
+// Simple MOTD endpoint with version info for client splash/chat
+let VERSION = 'dev';
+try {
+    // Resolve package.json relative to this file
+    const __filename = url.fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const pkgPath = path.resolve(__dirname, '../package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+    VERSION = pkg.version || VERSION;
+} catch (_) { /* keep default */ }
+
+app.get('/api/motd', (req, res) => {
+    const message = `Thanks for checking out Drawblins! (${VERSION}) For community updates, join discord.gg/vGMVUcd7Vw`;
+    res.json({ message, version: VERSION });
 });
 
 let stripe = null;
@@ -268,19 +286,17 @@ const socketToLobby = new Map(); // socket -> lobbyId
 let nextLobbyId = 1;
 
 // ---------------- Security: Sanitization + Rate Limits ----------------
-// HTML-escape to prevent XSS in any DOM-rendered strings on clients
-function escapeHtml(str) {
-    return str.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-}
+// Note: We do NOT HTML-escape chat or names here because clients render with textContent/canvas,
+// which is safe against HTML injection. We only strip control chars and cap length.
 function sanitizeText(input, maxLen = 240) {
     if (typeof input !== 'string') return '';
-    // Remove control characters, cap length, then escape HTML entities
+    // Remove control characters and cap length
     const cleaned = input.replace(/[\u0000-\u001F\u007F]/g, '');
     const truncated = cleaned.slice(0, Math.max(0, maxLen));
-    return escapeHtml(truncated);
+    return truncated;
 }
 function sanitizeName(input) {
-    // More conservative cap for names; allow common punctuation; escape HTML anyway
+    // More conservative cap for names; allow common punctuation
     return sanitizeText(input, 40);
 }
 

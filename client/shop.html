@@ -34,17 +34,7 @@
   <noscript>
     <div class="noscript">JavaScript is required to use the shop.</div>
   </noscript>
-  <!-- Reuse login/account menu so users can access account controls here too -->
-  <a id="login-button" href="./login">Login</a>
-  <div id="account-menu" style="display:none;">
-      <div class="account-menu__name-label">Display name</div>
-      <input id="account-name-input" class="account-menu__input" type="text" maxlength="40" placeholder="Your goblin name" />
-      <div class="account-menu__buttons">
-          <button id="account-open-shop" class="account-menu__action">Shop</button>
-      <button id="account-open-account" class="account-menu__action">Details</button>
-          <button id="account-signout" class="account-menu__action account-menu__action--danger">Sign out</button>
-      </div>
-  </div>
+  <!-- Account controls are mounted dynamically by auth.js -->
 
   <main class="shop-main">
     <header class="shop-header">

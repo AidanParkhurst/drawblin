@@ -104,10 +104,46 @@ export default {
   ready,
   getProfileName,
   upsertProfileName,
+  mountAccountControls,
 };
+
+// Create canonical login button + account dropdown if not present
+export function mountAccountControls(container) {
+  const root = container || document.body;
+  if (!root) return;
+  // Ensure login button exists
+  let loginBtn = document.getElementById('login-button');
+  if (!loginBtn) {
+    loginBtn = document.createElement('a');
+    loginBtn.id = 'login-button';
+    loginBtn.href = './login';
+    loginBtn.textContent = 'Login';
+    root.appendChild(loginBtn);
+  }
+  // Ensure account menu exists
+  let menu = document.getElementById('account-menu');
+  if (!menu) {
+    menu = document.createElement('div');
+    menu.id = 'account-menu';
+    menu.style.display = 'none';
+    menu.innerHTML = `
+      <div class="account-menu__name-label">Display name</div>
+      <input id="account-name-input" class="account-menu__input" type="text" maxlength="40" placeholder="Your goblin name" />
+      <div class="account-menu__buttons">
+        <button id="account-open-shop" class="account-menu__action">Shop</button>
+        <button id="account-open-account" class="account-menu__action">Account Details</button>
+        <a id="account-discord" class="account-menu__action" href="https://discord.gg/vGMVUcd7Vw" target="_blank" rel="noopener noreferrer">Drawblins Discord</a>
+        <a id="account-support" class="account-menu__action" href="mailto:support@drawbl.in">Contact Support</a>
+        <button id="account-signout" class="account-menu__action account-menu__action--danger">Sign out</button>
+      </div>`;
+    root.appendChild(menu);
+  }
+}
 
 // Bind to a fixed login button in index.html (id: login-button)
 async function bindLoginButton() {
+  // Create canonical controls if not present
+  mountAccountControls();
   await initAuth();
   const btn = document.getElementById('login-button');
   if (!btn) return; // Silent if not present
