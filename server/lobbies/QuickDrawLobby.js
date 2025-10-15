@@ -12,10 +12,14 @@ class QuickDrawLobby extends Lobby {
     // After all drawings are displayed, show results and scores
 
     constructor(id) {
-        super(id, 6); // Quick draw works well with 4-6 players for voting
+        super(id, 8); // Quick draw works well with 4-6 players for voting
         this.minPlayers = 2; // Minimum players to start the game
         this.gameState = "waiting"; // waiting, drawing, pre-voting, voting, finished
-        this.currentArtist = null; // id of artist being voted on 
+    this.currentArtist = null; // legacy: id of artist being voted on (unused in team mode)
+    this.currentTeam = []; // array of artist ids for the team currently being voted on
+    this.teams = []; // array of arrays of userIds
+    this.teamByUser = new Map(); // userId -> team array (including user)
+    this.currentTeamIndex = 0;
         // TODO: Import a lot of these consts from a rules file, accessible by the frontend as well
         this.waitingTime = 20; // seconds to wait for players
         this.drawingTime = 180; // seconds (extended)
@@ -31,6 +35,7 @@ class QuickDrawLobby extends Lobby {
         this.sortedResults = []; // Store results for the finished state 
         this.recentPrompts = []; // keep last few prompts to avoid repeats
         this.recentLimit = 10; // shortlist size
+    this.firstPlaceTeamSize = 0; // number of players in the top team for finished payload
 
         // Handle disconnects
         this.onClientRemoved = (socket) => {
@@ -39,8 +44,15 @@ class QuickDrawLobby extends Lobby {
                 // Remove from finished drawings if present
                 this.finishedDrawings.delete(removedId);
                 // If currently being voted on, advance as if timer ran out
-                if (this.gameState === 'voting' && this.currentArtist === removedId) {
-                    this.timer = 0;
+                if (this.gameState === 'voting') {
+                    // If the removed player is in the current team, skip ahead
+                    if (Array.isArray(this.currentTeam) && this.currentTeam.includes(removedId)) {
+                        this.timer = 0;
+                    }
+                    // Also clean team structures
+                    this.teams = this.teams.map(t => t.filter(id => id !== removedId)).filter(t => t.length > 0);
+                    if (this.teamByUser.has(removedId)) this.teamByUser.delete(removedId);
+                    if (Array.isArray(this.currentTeam)) this.currentTeam = this.currentTeam.filter(id => id !== removedId);
                 }
             }
             if (this.clients.size < this.minPlayers && this.gameState !== 'waiting') {
@@ -74,7 +86,16 @@ class QuickDrawLobby extends Lobby {
                 this.prompt = this.pickNewPrompt();
                 this.gameState = 'drawing';
                 this.timer = this.drawingTime; // Set timer to drawing time
-                this.broadcast({ type: "game_state", state: "drawing", prompt: this.prompt, time: this.drawingTime });
+                // Build teams for this round
+                this.buildTeamsForRound();
+                // Send per-player drawing state including teammates
+                for (const client of this.clients) {
+                    const uid = this.getUserId(client);
+                    const team = (uid != null && this.teamByUser.has(uid)) ? this.teamByUser.get(uid) : [];
+                    // teammates are team minus self
+                    const teammates = Array.isArray(team) ? team.filter(id => id !== uid) : [];
+                    this.sendTo(client, { type: "game_state", state: "drawing", prompt: this.prompt, time: this.drawingTime, teammates });
+                }
             }
         } else if (this.gameState === 'drawing') {
             if (this.timer <= 0) { // Transition immediately when timer ends (no extra hidden delay)
@@ -89,31 +110,65 @@ class QuickDrawLobby extends Lobby {
         } else if (this.gameState === 'pre-voting') {
             if (this.timer <= 0) { // Wait 5 seconds before starting voting
                 this.gameState = 'voting';
-                // Pick the first available artist id
-                const artistKeys = Array.from(this.finishedDrawings.keys());
-                this.currentArtist = artistKeys[0] ?? null;
+                // Prepare the first team to be voted on
+                const roundTeams = this.teams.length ? this.teams : [Array.from(this.finishedDrawings.keys())];
+                // Filter teams to only include members that actually finished (present in finishedDrawings)
+                const filtered = roundTeams.map(t => t.filter(id => this.finishedDrawings.has(id))).filter(t => t.length > 0);
+                this.teams = filtered.length ? filtered : [Array.from(this.finishedDrawings.keys())];
+                this.currentTeamIndex = 0;
+                this.currentTeam = this.teams[0] || [];
+                this.currentArtist = null; // deprecated in team mode
                 this.timer = this.votingTime; // Set timer to voting time
-                this.broadcast({ type: "game_state", state: "voting", artistId: this.currentArtist, time: this.votingTime });
+                this.broadcast({ type: "game_state", state: "voting", artistIds: this.currentTeam.slice(), time: this.votingTime });
             }
         } else if (this.gameState === 'voting') {
             if (this.timer <= 0) {
-                // Next artist or end voting
-                const artistKeys = Array.from(this.finishedDrawings.keys());
-                const currentIndex = artistKeys.indexOf(this.currentArtist);
-                if (currentIndex < artistKeys.length - 1) {
-                    this.currentArtist = artistKeys[currentIndex + 1];
-                    this.timer = this.votingTime; // Reset timer for next artist
-                    this.broadcast({ type: "game_state", state: "voting", artistId: this.currentArtist, time: this.votingTime });
+                // Next team or end voting
+                if (this.currentTeamIndex < this.teams.length - 1) {
+                    this.currentTeamIndex += 1;
+                    this.currentTeam = this.teams[this.currentTeamIndex] || [];
+                    this.timer = this.votingTime; // Reset timer for next team
+                    this.broadcast({ type: "game_state", state: "voting", artistIds: this.currentTeam.slice(), time: this.votingTime });
                 } else {
                     // End voting phase
                     this.gameState = 'finished';
-                    // TODO: This is ai generated lol, check if its correct
-                    this.sortedResults = Array.from(this.finishedDrawings.entries()).map(([artistId, data]) => {
-                        const totalVotes = data.votes.reduce((sum, vote) => sum + vote.vote, 0);
-                        const averageVote = totalVotes / data.votes.length || 0; // Avoid division
-                        return { artistId, votes: data.votes.length, averageVote };
-                    }).sort((a, b) => b.averageVote - a.averageVote); // Sort by average vote descending
-                    this.broadcast({ type: "game_state", state: "finished", results: this.sortedResults, time: this.waitingTime });
+                    // Build per-artist stats
+                    const perArtist = Array.from(this.finishedDrawings.entries()).map(([artistId, data]) => {
+                        const totalVotes = (Array.isArray(data.votes) ? data.votes : []).reduce((sum, v) => sum + (v?.vote || 0), 0);
+                        const count = (Array.isArray(data.votes) ? data.votes.length : 0);
+                        const averageVote = count > 0 ? (totalVotes / count) : 0;
+                        return { artistId, votes: count, averageVote };
+                    });
+                    // Compute team average for sorting and first-place size
+                    const teamAvgByMember = new Map();
+                    for (const t of this.teams) {
+                        if (!t || t.length === 0) continue;
+                        const members = t.filter(id => perArtist.find(p => p.artistId === id));
+                        if (!members.length) continue;
+                        let sum = 0; let n = 0;
+                        for (const id of members) {
+                            const p = perArtist.find(x => x.artistId === id);
+                            if (p) { sum += p.averageVote; n += 1; }
+                        }
+                        const teamAvg = n > 0 ? (sum / n) : 0;
+                        for (const id of members) teamAvgByMember.set(id, teamAvg);
+                    }
+                    // Sort by team average (desc), then by individual average (desc) as a stable tiebreaker
+                    this.sortedResults = perArtist.sort((a, b) => {
+                        const ta = teamAvgByMember.get(a.artistId) ?? a.averageVote;
+                        const tb = teamAvgByMember.get(b.artistId) ?? b.averageVote;
+                        if (tb !== ta) return tb - ta;
+                        return b.averageVote - a.averageVote;
+                    });
+                    // Determine first place team size
+                    this.firstPlaceTeamSize = 0;
+                    if (this.sortedResults.length > 0) {
+                        const topId = this.sortedResults[0].artistId;
+                        // Find the team that contains topId
+                        const topTeam = this.teams.find(t => Array.isArray(t) && t.includes(topId));
+                        this.firstPlaceTeamSize = Array.isArray(topTeam) ? topTeam.length : 1;
+                    }
+                    this.broadcast({ type: "game_state", state: "finished", results: this.sortedResults, firstPlaceTeamSize: this.firstPlaceTeamSize, time: this.waitingTime });
                     this.timer = this.celebrationTime; // Set timer for celebration
                 }
             }
@@ -134,7 +189,23 @@ class QuickDrawLobby extends Lobby {
     handleMessage(socket, message) {
         if (message.type === "update") {
             if (!this.users.has(socket)) {
-                this.sendTo(socket, {type: "game_state", state: this.gameState, prompt: this.prompt, time: Math.max(0, this.timer), artistId: this.currentArtist, results: this.sortedResults });
+                // Prefill state for newcomers
+                const gid = (message.goblin && message.goblin.id != null)
+                    ? message.goblin.id
+                    : (message.g && message.g.i != null ? message.g.i : null);
+                // Build state payload with team-friendly fields
+                const base = { type: "game_state", state: this.gameState, prompt: this.prompt, time: Math.max(0, this.timer), results: this.sortedResults };
+                if (this.gameState === 'voting') {
+                    base.artistIds = Array.isArray(this.currentTeam) ? this.currentTeam.slice() : [];
+                } else if (this.gameState === 'drawing') {
+                    if (gid != null && this.teamByUser.has(gid)) {
+                        const team = this.teamByUser.get(gid) || [];
+                        base.teammates = team.filter(id => id !== gid);
+                    }
+                } else if (this.gameState === 'finished') {
+                    base.firstPlaceTeamSize = this.firstPlaceTeamSize|0;
+                }
+                this.sendTo(socket, base);
             }
             // Accept both legacy and compact goblin update shapes
             const gid = (message.goblin && message.goblin.id != null)
@@ -163,35 +234,50 @@ class QuickDrawLobby extends Lobby {
                     message.content = message.content.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 240);
                 } else { message.content = ''; }
                 var vote = this.getVoteFromMessage(message.content);
-                
-                if (!vote || message.userId === this.currentArtist) { // Normal chat message
+
+                // In team mode, don't allow members of the current team to vote on their own team
+                const isOnCurrentTeam = Array.isArray(this.currentTeam) && this.currentTeam.includes(message.userId);
+                if (!vote || isOnCurrentTeam) { // Normal chat message
                     this.broadcast(message, null); // include sender for chat
                     return;
                 }
 
-                var current_art = this.finishedDrawings.get(this.currentArtist);
-                if (!current_art) {
-                    console.warn("Current artist not found in finished drawings");
-                    return;
-                }
-                if (!current_art.votes) {
-                    current_art.votes = []; // Initialize votes if not present
-                }
-
-                var existingVote = current_art.votes.find(v => v.userId === message.userId);
-                if (existingVote) {
-                    // Update existing vote
-                    existingVote.vote = vote;
-                } else {
-                    current_art.votes.push({ userId: message.userId, vote: vote });
+                // Apply vote to all members of the current team so they share identical scores
+                const team = Array.isArray(this.currentTeam) ? this.currentTeam : [];
+                for (const memberId of team) {
+                    const bucket = this.finishedDrawings.get(memberId);
+                    if (!bucket) continue;
+                    if (!bucket.votes) bucket.votes = [];
+                    const existingVote = bucket.votes.find(v => v.userId === message.userId);
+                    if (existingVote) {
+                        existingVote.vote = vote;
+                    } else {
+                        bucket.votes.push({ userId: message.userId, vote: vote });
+                    }
                 }
                 this.broadcast({ type: "chat", userId: message.userId, content: "Voted!" });
             } else {
-                // Not voting: treat all chat as normal chat and broadcast to everyone
+                // Not voting: drawing-phase chat is team-only; other phases are global
                 if (typeof message.content === 'string') {
                     message.content = message.content.replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 240);
                 } else { message.content = ''; }
-                this.broadcast(message, null);
+                if (this.gameState === 'drawing') {
+                    const uid = message.userId;
+                    const team = uid != null ? this.teamByUser.get(uid) : null;
+                    if (Array.isArray(team) && team.length > 0) {
+                        for (const client of this.clients) {
+                            const cid = this.getUserId(client);
+                            if (cid != null && team.includes(cid)) {
+                                this.sendTo(client, message);
+                            }
+                        }
+                    } else {
+                        // Fallback: if no team found (e.g., late join), echo to sender only
+                        this.sendTo(socket, message);
+                    }
+                } else {
+                    this.broadcast(message, null);
+                }
             }
         }
     }
@@ -209,6 +295,11 @@ class QuickDrawLobby extends Lobby {
     resetLobby() {
         this.gameState = 'waiting';
         this.currentArtist = null;
+        this.currentTeam = [];
+        this.teams = [];
+        this.teamByUser.clear();
+        this.currentTeamIndex = 0;
+        this.firstPlaceTeamSize = 0;
         // Dynamic wait based on current player count
         this.timer = this.desiredWaitForPlayers();
         this.prompt = "";
@@ -220,13 +311,25 @@ class QuickDrawLobby extends Lobby {
     startNextRound() {
         // Prepare for next drawing phase directly
         this.currentArtist = null;
+        this.currentTeam = [];
+        this.teams = [];
+        this.teamByUser.clear();
+        this.currentTeamIndex = 0;
+    this.firstPlaceTeamSize = 0;
         this.prompt = "";
         this.finishedDrawings.clear();
         this.sortedResults = [];
     this.prompt = this.pickNewPrompt();
         this.gameState = 'drawing';
         this.timer = this.drawingTime;
-        this.broadcast({ type: 'game_state', state: 'drawing', prompt: this.prompt, time: this.drawingTime });
+        // Rebuild teams and send per-player teammates
+        this.buildTeamsForRound();
+        for (const client of this.clients) {
+            const uid = this.getUserId(client);
+            const team = (uid != null && this.teamByUser.has(uid)) ? this.teamByUser.get(uid) : [];
+            const teammates = Array.isArray(team) ? team.filter(id => id !== uid) : [];
+            this.sendTo(client, { type: 'game_state', state: 'drawing', prompt: this.prompt, time: this.drawingTime, teammates });
+        }
     }
 
     pickNewPrompt() {
@@ -260,6 +363,33 @@ class QuickDrawLobby extends Lobby {
         const span = this.maxPlayers - this.minPlayers;
         const t = (p - this.minPlayers) / span; // 0..1
         return high - (high - low) * t;
+    }
+
+    // Team-building: random pairs, with a single team of 3 if odd
+    buildTeamsForRound() {
+        const ids = Array.from(this.users.values()).map(u => u.id).filter(id => id != null);
+        // Shuffle ids
+        for (let i = ids.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [ids[i], ids[j]] = [ids[j], ids[i]];
+        }
+        const teams = [];
+        if (ids.length % 2 === 1 && ids.length >= 3) {
+            // Make pairs until 3 remain; last team of 3
+            let i = 0;
+            while (i + 3 < ids.length) { teams.push([ids[i], ids[i+1]]); i += 2; }
+            teams.push([ids[ids.length-3], ids[ids.length-2], ids[ids.length-1]]);
+        } else {
+            for (let i = 0; i < ids.length; i += 2) {
+                const chunk = ids.slice(i, i + 2);
+                if (chunk.length) teams.push(chunk);
+            }
+        }
+        this.teams = teams;
+        this.teamByUser.clear();
+        for (const team of teams) {
+            for (const uid of team) this.teamByUser.set(uid, team.slice());
+        }
     }
 }
 

@@ -36,8 +36,10 @@ let prompt_length = -1; // legacy single-word length (still used for quickdraw u
 // QuickDraw winner tracking (now supports ties & persistence through next full round)
 let last_winners = new Set(); // ids of winners from most recent finished state
 let timer = 0;
-let current_artist = -1; // id of the artist who drew the art being voted on
+let current_artist = -1; // id of the artist who drew the art being voted on (legacy single)
+let current_artists = []; // team variant: array of artist ids currently being voted on
 let results = [];
+let teammates = []; // for quickdraw team mode: ids of your current round teammates (excluding you)
 // Persistent winner sets per mode (QuickDraw & Guessing Game)
 let quickdrawWinners = new Set();
 let guessingWinners = new Set();
@@ -306,12 +308,13 @@ function __drawGlobalLines(){
     if (lobby_type === 'quickdraw') {
         if (game_state === 'drawing') {
             const myId = you?.id;
-            allowOwner = (ownerId) => __idEq(ownerId, myId);
+            const mates = Array.isArray(teammates) ? teammates.slice() : [];
+            allowOwner = (ownerId) => __idEq(ownerId, myId) || mates.some(id => __idEq(id, ownerId));
         } else if (game_state === 'pre-voting') {
             allowOwner = () => false; // hide all
         } else if (game_state === 'voting') {
-            const artistId = current_artist;
-            allowOwner = (ownerId) => __idEq(ownerId, artistId);
+            const ids = Array.isArray(current_artists) && current_artists.length ? current_artists : (current_artist != null ? [current_artist] : []);
+            allowOwner = (ownerId) => ids.some(id => __idEq(ownerId, id));
         } else if (game_state === 'finished') {
             // Prefer the deterministic primary winner; fallback to any from last_winners
             const primary = (typeof quickdrawPrimaryWinner === 'number' || typeof quickdrawPrimaryWinner === 'string')
@@ -444,7 +447,7 @@ async function start() {
     if (__isMobile && freedraw_portal) {
         freedraw_portal.active = false;
     }
-    let quickdraw_portal = new Portal(width / 2 + 400, height / 2 - 200, 150, you.ui_color, "Stand here to join\nQuick Draw", () => {
+    let quickdraw_portal = new Portal(width / 2 + 400, height / 2 - 200, 150, you.ui_color, "Stand here to join\nTeam Draw", () => {
         you.lines = [];
         // game_state = 'waiting'; // Set game state to waiting
         connect('quickdraw'); // Connect to the quickdraw game type
@@ -666,7 +669,12 @@ window.draw = () => {
     __drawGlobalLines();
 
     // Render pets before goblins so they appear behind players but above lines
-    for (let p of pets) { if (p && typeof p.display === 'function') p.display(); }
+    for (let p of pets) {
+        if (!p) continue;
+        // Only show pet if its owner is visible this frame
+        const ownerVisible = p.owner && p.owner._visibleThisFrame;
+        if (ownerVisible && typeof p.display === 'function') p.display();
+    }
 
     // Render pass 2: goblins (sprites and names) on top of pets
     for (let g of goblins) {
@@ -823,8 +831,16 @@ function quickdraw_update(delta) {
         for (let g of goblins) {
             // Keep bling if they are previous winners
             g.hasBling = quickdrawWinners.has(g.id);
+            // Only render local player and teammates during drawing
+            const isSelf = __idEq(g.id, you.id);
+            const isMate = Array.isArray(teammates) && teammates.some(tid => __idEq(tid, g.id));
+            if (isSelf || isMate) {
+                g.update(delta);
+            } else {
+                // Do not call update() so this goblin remains invisible this frame
+                // (beginFrame() already cleared flags at the start of draw())
+            }
         }
-        you.update(delta);
         headerText = `Draw [${prompt}]`;
     } else if (game_state === 'pre-voting') {
         for (let goblin of goblins) {
@@ -835,9 +851,12 @@ function quickdraw_update(delta) {
     } else if (game_state === 'voting') {
         for (let goblin of goblins) {
             goblin.hasBling = quickdrawWinners.has(goblin.id);
-            if (goblin.id === current_artist) goblin.update(delta); else goblin.update(delta, false);
+            const onDeck = (Array.isArray(current_artists) && current_artists.some(id => __idEq(id, goblin.id))) || __idEq(goblin.id, current_artist);
+            if (onDeck) goblin.update(delta); else goblin.update(delta, false);
         }
-        headerText = (__idEq(you.id, current_artist)) ? 'Show off your drawing!' : 'Rate this drawing 1-5';
+        // In team mode, if you're on the featured team, show the show-off message
+        const onTeam = (Array.isArray(current_artists) && current_artists.some(id => __idEq(id, you.id))) || __idEq(you.id, current_artist);
+        headerText = onTeam ? 'Show off your team\'s drawing!' : 'Rate this team 1-5';
     } else if (game_state === 'finished') {
         // Determine winners (tie-aware) using highest averageVote
         let winners = [];
@@ -847,8 +866,10 @@ function quickdraw_update(delta) {
         }
         quickdrawWinners = new Set(winners); // persist through entire next round
         last_winners = new Set(winners);
-        // Deterministically pick primary winner whose drawing will persist into next round
-        quickdrawPrimaryWinner = winners.length ? winners[0] : null;
+        // Deterministically pick primary winner only if a team-based top-N wasn't specified in the state-change handler
+        if (!last_winners || last_winners.size === 0) {
+            quickdrawPrimaryWinner = winners.length ? winners[0] : null;
+        }
         let names = [];
         for (let goblin of goblins) {
             if (quickdrawWinners.has(goblin.id)) {
@@ -865,7 +886,7 @@ function quickdraw_update(delta) {
             }
         }
         if (names.length === 0) headerText = 'No winner';
-        else if (names.length === 1) headerText = `Winner: ${names[0]}!`;
+        else if (names.length === 1) headerText = `Winners: ${names[0]} (team)`;
         else headerText = `Winners: ${names.join(', ')}`;
     }
     if (headerText) _pendingHeader = { text: headerText, time: int(timer), color: you.ui_color, options: { revealBursts: (lobby_type === 'guessinggame') } };
@@ -1213,7 +1234,7 @@ function onmessage(event) {
             }
             break;
 
-        case "game_state":
+    case "game_state":
             // Remember previous state to detect visibility transitions
             const prev_state = game_state;
             if (lobby_type === 'quickdraw') {
@@ -1221,6 +1242,8 @@ function onmessage(event) {
                     // After finished phase, clear all drawings before waiting
                     for (let goblin of goblins) { goblin.lines = []; try { __clearOwnerLines(goblin.id); } catch {} }
                     timer = data.time;
+                    teammates = [];
+                    current_artists = [];
 
                 } else if (data.state === 'drawing') {
                     if (game_state !== 'drawing') { // just entered the drawing state, clear previous drawings
@@ -1228,17 +1251,31 @@ function onmessage(event) {
                     }
                     prompt = data.prompt;
                     timer = data.time;
+                    // Track your teammates for this round
+                    teammates = Array.isArray(data.teammates) ? data.teammates.slice() : [];
+                    current_artists = [];
 
                 } else if (data.state === 'pre-voting') {
                     timer = data.time;
 
                 } else if (data.state === 'voting') {
-                    current_artist = data.artistId; // Set the current artist for voting
+                    // Accept both legacy single and new team list
+                    current_artist = typeof data.artistId !== 'undefined' ? data.artistId : -1;
+                    current_artists = Array.isArray(data.artistIds) ? data.artistIds.slice() : (current_artist != null && current_artist !== -1 ? [current_artist] : []);
                     timer = data.time;
 
                 } else if (data.state === 'finished') {
                     timer = data.time;
                     results = data.results;
+                    // Optionally limit visible winning drawings to firstPlaceTeamSize
+                    const n = typeof data.firstPlaceTeamSize === 'number' ? Math.max(0, data.firstPlaceTeamSize|0) : 0;
+                    if (n > 0 && Array.isArray(results) && results.length >= n) {
+                        // Keep only first N entries' artistIds as the primary winners for line rendering
+                        const topIds = results.slice(0, n).map(r => r.artistId);
+                        last_winners = new Set(topIds);
+                        // Show all team members' drawings during finished phase
+                        quickdrawPrimaryWinner = null;
+                    }
                 }
 
                 game_state = data.state;
