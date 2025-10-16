@@ -3,7 +3,8 @@ import { assets } from './assets.js';
 
 class Toolbelt {
     constructor() {
-        this.tools = ['brush', 'eraser']; // Available tools
+        // Order matters for number hotkeys: 1=brush, 2=spray, 3=eraser
+        this.tools = ['brush', 'spray', 'eraser']; // Available tools
         this.toolSize = 60; // Size of each tool square
         this.spacing = 10; // Spacing between tools
         this.margin = 20; // Margin from screen edge
@@ -109,11 +110,37 @@ class Toolbelt {
                     ellipse(centerX, centerY - 8, 12, 8);
                 }
                 break;
+            
+            case 'spray':
+                // Draw spray icon (prefer sprite if present; fallback to dotted spray)
+                if (assets.sprites && (assets.sprites.spray || assets.sprites.brush)) {
+                    imageMode(CENTER);
+                    tint(you.color[0], you.color[1], you.color[2]); // Apply goblin's color tint
+                    // Use dedicated spray sprite if available, otherwise reuse brush sprite as placeholder
+                    const sprite = assets.sprites.spray || assets.sprites.brush;
+                    // Preserve aspect ratio; prefer intrinsic sprite dims, fallback to known 42x61
+                    const sw = (sprite && sprite.width) ? sprite.width : 42;
+                    const sh = (sprite && sprite.height) ? sprite.height : 61;
+                    const ratio = sw / sh; // < 1 means taller than wide
+                    const iconH = this.toolSize * 0.7; // make it taller visually within slot
+                    const iconW = iconH * ratio;
+                    image(sprite, centerX, centerY, iconW, iconH);
+                } else {
+                    // Fallback: simple spray pattern of dots
+                    noStroke();
+                    fill(you.ui_color[0], you.ui_color[1], you.ui_color[2]);
+                    const r = this.toolSize * 0.18;
+                    for (let i = 0; i < 12; i++) {
+                        const a = (i / 12) * TWO_PI;
+                        const rr = r + (i % 3) * 3;
+                        ellipse(centerX + cos(a) * rr, centerY + sin(a) * rr, 4, 4);
+                    }
+                }
+                break;
                 
             case 'eraser':
-                // Draw eraser icon using emptyhand.png
-                if (assets.sprites && assets.sprites.empty_hand) {
-                    // Use the empty hand asset as eraser icon
+                // Draw eraser icon using eraser sprite if present
+                if (assets.sprites && assets.sprites.eraser) {
                     imageMode(CENTER);
                     const iconSize = this.toolSize * 0.6; // 60% of tool size
                     tint(you.color[0], you.color[1], you.color[2]); // Apply goblin's color tint

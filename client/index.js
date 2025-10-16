@@ -11,7 +11,7 @@ import { drawHeader, drawWaitingWithScoreboard } from './header.js';
 import { ws, connect, sendMessage } from "./network.js";
 import { mountHouseControls, updateHouseControlsVisibility, onHouseModeSelected, setHouseMode } from './house_controls.js';
 import { assets } from "./assets.js";
-import { playThud, playDragGrain, stopDragImmediate } from './audio.js';
+import { playThud, playDragGrain, stopDragImmediate, playSprayClick, playSprayGrain, stopSprayImmediate } from './audio.js';
 import { calculateUIColor, randomPaletteColor } from "./colors.js";
 import { ready as authReady, isAuthConfigured, getUser, getProfileName, upsertProfileName } from './auth.js';
 import { generateGoblinName } from './names.js';
@@ -417,6 +417,8 @@ async function start() {
         name
     ); // Create the local goblin
     try { you.triggerAppear?.(); } catch {}
+    // Keep global line registry in sync when simplifier coalesces segments
+    you.onLinesChanged = (ownerId, segs) => { try { __syncOwnerLines(ownerId, segs || []); } catch {} };
 
     // Pet entitlement gating: only signed-in users with pet pack or premium get a pet (selected later via profile UI)
     try {
@@ -737,22 +739,34 @@ window.draw = () => {
             // For drawing, throttle additions if we haven't moved enough
             if (dist(you.cursor.x, you.cursor.y, last_mouse.x, last_mouse.y) < line_granularity) return; // Skip if the mouse hasn't moved enough
             // Regular brush/drawing logic
-            var l = new Line(createVector(last_mouse.x, last_mouse.y), createVector(you.cursor.x, you.cursor.y), you.color, 5);
+            const weight = (you.tool === 'spray') ? 10 : 5; // spray is thicker than brush, but slightly slimmer
+            var l = new Line(createVector(last_mouse.x, last_mouse.y), createVector(you.cursor.x, you.cursor.y), you.color, weight);
             you.lines.push(l); // Store the line in the goblin's lines array
             try { __registerLine(you.id, l); } catch {}
-            // Grain-based drag SFX using segment distance
+            // Grain-based SFX using segment distance
             if (lastDragX == null) { lastDragX = last_mouse.x; lastDragY = last_mouse.y; }
             const segDx = you.cursor.x - lastDragX;
             const segDy = you.cursor.y - lastDragY;
             const segDist = Math.sqrt(segDx*segDx + segDy*segDy);
             dragAccumDist += segDist;
             lastDragX = you.cursor.x; lastDragY = you.cursor.y;
-            // Trigger small grain every ~32px of cumulative stroke distance
-            const threshold = 32;
+            // Trigger grains based on cumulative stroke distance
+            // Brush: ~32px; Spray: keep higher than brush but low enough to fire on short strokes
+            const threshold = (you.tool === 'spray') ? 48 : 32;
             if (dragAccumDist >= threshold) {
                 // Scale intensity with how much over threshold (cap 2x)
                 const factor = Math.min(1, (dragAccumDist / threshold));
-                playDragGrain(factor);
+                if (you.tool === 'spray') {
+                    // Time throttle: min 200ms between spray grains
+                    const now = performance.now();
+                    if (!window.__lastSprayGrainAt || (now - window.__lastSprayGrainAt) > 200) {
+                        playSprayGrain(factor);
+                        window.__lastSprayGrainAt = now;
+                        window.__sprayGrainThisStroke = true;
+                    }
+                } else {
+                    playDragGrain(factor);
+                }
                 dragAccumDist = 0; // reset accumulator
             }
         }
@@ -972,13 +986,16 @@ window.mousePressed = () => {
     drawing = true;
     last_mouse = createVector(you.cursor.x, you.cursor.y);
     last_line_count = you.lines.length; // Store the initial line count
-    // Thud on initial press (low latency)
-    try { playThud(); } catch {}
+    // Reset per-stroke spray grain flag
+    window.__sprayGrainThisStroke = false;
+    // Click-on for current tool (brush uses thud; spray uses click)
+    try { if (you.tool === 'spray') playSprayClick(); else playThud(); } catch {}
 }
 
 window.mouseReleased = () => {
     if (drawing && you.lines.length === last_line_count && you.tool !== 'eraser') { // If no new line was added and not using eraser
-        var l = new Line(createVector(you.cursor.x, you.cursor.y), createVector(you.cursor.x, you.cursor.y), you.color, 5);
+    const weight = (you.tool === 'spray') ? 10 : 5;
+        var l = new Line(createVector(you.cursor.x, you.cursor.y), createVector(you.cursor.x, you.cursor.y), you.color, weight);
         you.lines.push(l); // Store the line in the goblin's lines array
         try { __registerLine(you.id, l); } catch {}
     }
@@ -989,11 +1006,28 @@ window.mouseReleased = () => {
     drawing = false;
     // Stop drag sound (fade out quickly by pausing)
     // Reset drag accum tracking & cut residual drag audio
-    dragAccumDist = 0; lastDragX = lastDragY = null; stopDragImmediate();
-    // Thud on release
-    try { playThud(); } catch {}
+    dragAccumDist = 0; lastDragX = lastDragY = null; stopDragImmediate(); try { stopSprayImmediate(); } catch {}
+    // If user made a tiny spray stroke that didn't meet threshold, play one soft grain on release
+    if (you.tool === 'spray' && window.__sprayGrainThisStroke === false) {
+        try { playSprayGrain(0.4); window.__sprayGrainThisStroke = true; } catch {}
+    }
+    // Click-off for current tool (brush uses thud; spray uses click)
+    try { if (you.tool === 'spray') playSprayClick(); else playThud(); } catch {}
     // add a dot line to the goblin's lines
 }
+
+// Defensive: stop drag grain if pointer leaves window while pressed
+window.addEventListener('mouseleave', () => {
+    if (drawing) {
+        drawing = false;
+        dragAccumDist = 0; lastDragX = lastDragY = null; try { stopDragImmediate(); stopSprayImmediate(); } catch {}
+    }
+});
+
+// Defensive: stop audio if we blur
+window.addEventListener('blur', () => {
+    try { stopDragImmediate(); stopSprayImmediate(); } catch {}
+});
 
 window.keyPressed = () => {
     hasInput = true; // Set hasInput to true when the user presses a key
@@ -1006,8 +1040,14 @@ window.addEventListener('keydown', (event) => {
     const typing = tag === 'input' || tag === 'textarea' || (t && t.isContentEditable);
     if (typing) return; // do not capture WASD when typing in chat/input
     // Hotkeys: tool selection (only when not typing)
+    const prevTool = you.tool;
     if (event.code === 'Digit1') { you.tool = 'brush'; }
-    else if (event.code === 'Digit2') { you.tool = 'eraser'; }
+    else if (event.code === 'Digit2') { you.tool = 'spray'; }
+    else if (event.code === 'Digit3') { you.tool = 'eraser'; }
+    // If switching into eraser while dragging, silence any ongoing drag sound
+    if (prevTool !== you.tool && you.tool === 'eraser') {
+        try { stopDragImmediate(); stopSprayImmediate(); } catch {}
+    }
     you.keyStates[event.key] = true;
 });
 window.addEventListener('keyup', (event) => {
@@ -1143,6 +1183,8 @@ function onmessage(event) {
                 const newcomer = new Goblin(payload.x, payload.y, color, false, payload.id, payload.shape, payload.name || '');
                 try { newcomer.triggerAppear?.(); } catch {}
                 goblins.push(newcomer);
+                // Attach lines-changed hook so remote simplifications also resync registry
+                newcomer.onLinesChanged = (ownerId, segs) => { try { __syncOwnerLines(ownerId, segs || []); } catch {} };
                 // A new player joined; request that we resend our lines on next heartbeat so they see existing drawings
                 if (you && you.id !== newcomer.id && you.lines && you.lines.length > 0) {
                     __newPlayersSinceLastSend += 1;
@@ -1211,6 +1253,10 @@ function onmessage(event) {
                     }
                     goblin.lines = rebuilt;
                     try { __syncOwnerLines(goblin.id, rebuilt); } catch {}
+                    // Ensure callback remains set after updates
+                    if (!goblin.onLinesChanged) {
+                        goblin.onLinesChanged = (ownerId, segs) => { try { __syncOwnerLines(ownerId, segs || []); } catch {} };
+                    }
                 }
             }
             break;
@@ -1239,6 +1285,7 @@ function onmessage(event) {
             const prev_state = game_state;
             if (lobby_type === 'quickdraw') {
                 if (data.state === 'waiting') {
+                    try { stopDragImmediate(); } catch {}
                     // After finished phase, clear all drawings before waiting
                     for (let goblin of goblins) { goblin.lines = []; try { __clearOwnerLines(goblin.id); } catch {} }
                     timer = data.time;
@@ -1256,15 +1303,18 @@ function onmessage(event) {
                     current_artists = [];
 
                 } else if (data.state === 'pre-voting') {
+                    try { stopDragImmediate(); } catch {}
                     timer = data.time;
 
                 } else if (data.state === 'voting') {
+                    try { stopDragImmediate(); } catch {}
                     // Accept both legacy single and new team list
                     current_artist = typeof data.artistId !== 'undefined' ? data.artistId : -1;
                     current_artists = Array.isArray(data.artistIds) ? data.artistIds.slice() : (current_artist != null && current_artist !== -1 ? [current_artist] : []);
                     timer = data.time;
 
                 } else if (data.state === 'finished') {
+                    try { stopDragImmediate(); } catch {}
                     timer = data.time;
                     results = data.results;
                     // Optionally limit visible winning drawings to firstPlaceTeamSize
@@ -1282,6 +1332,7 @@ function onmessage(event) {
             }
             else if (lobby_type === 'guessinggame') {
                 if (data.state === 'waiting') {
+                    try { stopDragImmediate(); } catch {}
                     // Entering scoreboard/waiting: clear all drawings so text isn't overlapped
                     for (let g of goblins) { g.lines = []; try { __clearOwnerLines(g.id); } catch {} }
                     timer = data.time;
@@ -1300,6 +1351,7 @@ function onmessage(event) {
                     }
                     timer = data.time;
                 } else if (data.state === 'reveal') {
+                    try { stopDragImmediate(); } catch {}
                     prompt = data.prompt;
                     current_artist = data.artistId;
                     timer = data.time;

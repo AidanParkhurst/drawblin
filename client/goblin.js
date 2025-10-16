@@ -19,9 +19,11 @@ class Goblin {
         this.cursor_range = 200; // Range within which the cursor can move
         this.cursor_vector = createVector(0, 0); // Vector to track cursor position relative to the goblin
         this.lines = []; // Array to store lines drawn by the goblin
-        this.simplify_timer = 0; // Timer for simplifying lines
-        this.simplify_interval = 1000; // Interval for simplifying lines in milliseconds
+    this.simplify_timer = 0; // Timer for simplifying lines
+    this.simplify_interval = 500; // Interval for simplifying lines in milliseconds (run more regularly)
         this.last_simplify_count = 0; // Last count of lines after simplification
+    // Optional callback (set by host) to notify when lines have changed so render registries can resync
+    this.onLinesChanged = null;
         
         this.max_speed = 8; // Maximum speed of the player
         this.speed = 2; // Acceleration
@@ -140,6 +142,10 @@ class Goblin {
             this.simplify_timer = 0; 
             this.lines = this.simplifyLines(this.lines, 5, 0.5);
             this.last_simplify_count = this.lines.length;
+            // Inform host (index.js) so global draw registry stays in sync with simplified segments
+            if (typeof this.onLinesChanged === 'function') {
+                try { this.onLinesChanged(this.id, this.lines); } catch {}
+            }
         }
 
         this.simplify_timer += delta;
@@ -264,6 +270,16 @@ class Goblin {
         image(assets.sprites["brush_hand"], 0, 0, 10, 10);
         if (this.tool === 'brush') {
             image(assets.sprites["brush"], 17, -8, 25, 15);
+        } else if (this.tool === 'spray') {
+            // Use dedicated spray sprite if available; otherwise reuse brush asset as placeholder
+            const sprite = assets.sprites["spray"] || assets.sprites["brush"];
+            // Preserve sprite aspect ratio (default 42x61), scale to similar footprint but taller than wide
+            const sw = (sprite && sprite.width) ? sprite.width : 42;
+            const sh = (sprite && sprite.height) ? sprite.height : 61;
+            const ratio = sw / sh;
+            const targetH = 28; // make spraycan a little bigger in hand
+            const targetW = targetH * ratio;
+            image(sprite, 17, -8, targetW, targetH);
         } else if (this.tool === 'eraser') {
             image(assets.sprites["eraser"], 15, -8, 25, 15);
         }
@@ -381,6 +397,11 @@ class Goblin {
             fill(this.color[0], this.color[1], this.color[2], 100);
             noStroke();
             ellipse(this.cursor.x, this.cursor.y, this.eraserRadius * 2);
+        } else if (this.tool === 'spray') {
+            // Slightly larger cursor to suggest thicker stroke
+            fill(this.color[0], this.color[1], this.color[2], 100);
+            noStroke();
+            ellipse(this.cursor.x, this.cursor.y, 28);
         } else {
             // Cursor dot
             fill(this.color[0], this.color[1], this.color[2], 100);

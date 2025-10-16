@@ -1,6 +1,7 @@
 // Tools
 import brushImg from './assets/brush.png';
 import eraserImg from './assets/eraser.png';
+import sprayImg from './assets/spraycan.png';
 // Goblins
 import brushHandImg from './assets/brushhand.png';
 import emptyHandImg from './assets/emptyhand.png';
@@ -36,6 +37,8 @@ import dragSfx from './assets/sfx/drag.mp3';
 import thudSfx from './assets/sfx/thud.mp3';
 import tapSfx from './assets/sfx/tap.mp3';
 import tapWoodSfx from './assets/sfx/tap_wood.mp3';
+import sprayClickSfx from './assets/sfx/spray_click.mp3';
+import spraySfx from './assets/sfx/spray.mp3';
 
 class Assets {
     constructor() {
@@ -44,6 +47,7 @@ class Assets {
             "empty_hand": emptyHandImg,
             "brush": brushImg,
             "eraser": eraserImg,
+            "spray": sprayImg,
             "crown": crownImg,
             "chain": chainImg,
             "halo": haloImg,
@@ -71,7 +75,7 @@ class Assets {
         this.sprites = {};
         this.font = neuchaFont; // Default font
         // Audio map (lazy created in preloadAssets)
-    this.sfx = { pop: null, drag: null, thud: null, tap: null, tap_wood: null };
+    this.sfx = { pop: null, drag: null, thud: null, tap: null, tap_wood: null, spray_click: null, spray: null };
     }
 
     async preloadAssets() {
@@ -81,10 +85,23 @@ class Assets {
         this.font = await loadFont(this.font);
         // Preload audio via HTML5 Audio (lightweight vs adding p5.sound dependency)
         try { this.sfx.pop = new Audio(popSfx); this.sfx.pop.preload = 'auto'; } catch {}
-        try { this.sfx.drag = new Audio(dragSfx); this.sfx.drag.preload = 'auto'; this.sfx.drag.loop = true; this.sfx.drag.volume = 0.35; } catch {}
+        try {
+            this.sfx.drag = new Audio(dragSfx);
+            this.sfx.drag.preload = 'auto';
+            // Do NOT loop by default; we play short grains and manage lifecycle manually
+            this.sfx.drag.loop = false;
+            this.sfx.drag.volume = 0.35;
+        } catch {}
         try { this.sfx.thud = new Audio(thudSfx); this.sfx.thud.preload = 'auto'; } catch {}
         try { this.sfx.tap = new Audio(tapSfx); this.sfx.tap.preload = 'auto'; this.sfx.tap.volume = 0.25; } catch {}
         try { this.sfx.tap_wood = new Audio(tapWoodSfx); this.sfx.tap_wood.preload = 'auto'; this.sfx.tap_wood.volume = 0.25; } catch {}
+        try { this.sfx.spray_click = new Audio(sprayClickSfx); this.sfx.spray_click.preload = 'auto'; } catch {}
+        try {
+            this.sfx.spray = new Audio(spraySfx);
+            this.sfx.spray.preload = 'auto';
+            this.sfx.spray.loop = false; // grains managed manually
+            this.sfx.spray.volume = 0.35;
+        } catch {}
     }
 }
 
