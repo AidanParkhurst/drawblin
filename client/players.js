@@ -2,6 +2,7 @@ import { you, goblins } from './index.js';
 import { assets } from './assets.js'; // Import assets for the player list
 import ProfileDisplay from './profile_display.js';
 import BasicProfileDisplay from './profile_display_basic.js';
+import { resolveBlingLayout, computeBlingWidth } from './bling_config.js';
 import { isAuthConfigured, getUser, ready as authReady } from './auth.js';
 import { spawnBurst } from './burst.js';
 import { fetchEntitlements, hasPremium, hasPetPack, hasBlingPack } from './entitlements.js';
@@ -82,13 +83,12 @@ class PlayerList {
             if (hoveringSelf) {
                 cursor('pointer'); // Change cursor to pointer when hovering over a goblin
                 if (mouseIsPressed) {
-                    // Calculate the position of the clicked goblin's icon
+                    // Calculate the position of the clicked goblin's icon (left-anchored)
                     const goblinIndex = goblins.indexOf(hovered_goblin);
-                    const totalWidth = (goblins.length * this.circleSize) + ((goblins.length - 1) * this.spacing);
-                    const startX = (windowWidth - totalWidth) / 2;
+                    const startX = 10 + (this.circleSize / 2);
                     const playerIconX = startX + (goblinIndex * (this.circleSize + this.spacing));
                     const playerIconY = windowHeight - 20 - (this.circleSize / 2);
-                    
+
                     // Open profile display for the clicked goblin at the icon position
                     this.profileDisplay.show(hovered_goblin.id, playerIconX, playerIconY);
                 }
@@ -106,9 +106,9 @@ class PlayerList {
     display() {
         push();
 
-        const totalWidth = (goblins.length * this.circleSize) + ((goblins.length - 1) * this.spacing);
-        const startX = (windowWidth - totalWidth) / 2; // Center horizontally
-        const y = windowHeight - 20 - (this.circleSize / 2); // 20px up from bottom
+    // Anchor to bottom-left with a small inset
+    const startX = 10 + (this.circleSize / 2);
+    const y = windowHeight - 20 - (this.circleSize / 2); // 20px up from bottom
 
         noStroke();
         for (let i = 0; i < goblins.length; i++) {
@@ -127,7 +127,48 @@ class PlayerList {
             ellipse(0, 0, this.circleSize * 1.2, this.circleSize * 1.2);
             imageMode(CENTER);
             var sprite = assets.sprites[goblin.shape];
-            image(sprite, 0, this.circleSize * sprite.height/sprite.width/3, this.circleSize, this.circleSize * sprite.height / sprite.width); // Draw goblin image
+            const renderedHeight = this.circleSize * (sprite.height / sprite.width);
+            const spriteYOffset = this.circleSize * sprite.height / sprite.width / 3; // same offset used for image() below
+            image(sprite, 0, spriteYOffset, this.circleSize, renderedHeight); // Draw goblin image
+
+            // Render bling overlay on player icon when applicable (winners)
+            try {
+                if (goblin.hasBling && goblin.blingType) {
+                    const blingSprite = assets.sprites[goblin.blingType];
+                    if (blingSprite) {
+                        const layout = resolveBlingLayout(goblin.shape, goblin.blingType);
+                        if (layout) {
+                            const { anchor, spec } = layout;
+                            const bodyWidth = this.circleSize;
+                            const bodyHeight = renderedHeight;
+                            // anchor normalized -> pixel offsets (relative to the center of the rendered body image)
+                            let baseX = (anchor.x || 0) * bodyWidth;
+                            let baseY = (anchor.y || 0) * bodyHeight;
+                            // Account for the vertical shift used when drawing the sprite in the players list
+                            baseY += spriteYOffset;
+                            if (spec.dx) baseX += spec.dx * bodyWidth;
+                            if (spec.dy) baseY += spec.dy * bodyHeight;
+
+                            // Compute target size using helper (treat circleSize as goblin size)
+                            const targetWidth = Math.max(6, computeBlingWidth(goblin.shape, goblin.blingType, spec.width || 0.5, this.circleSize));
+                            const ratio = blingSprite.height / blingSprite.width;
+                            const targetHeight = targetWidth * ratio;
+
+                            // Optional bobbing for ring-like bling
+                            let bobOffset = 0;
+                            if (spec.bob) {
+                                bobOffset = Math.sin((frameCount * 0.05) + (goblin.id % 997)) * 4;
+                            }
+
+                            // Draw bling; we're inside a push() with translate(x,y) applied, so just draw at offset
+                            imageMode(CENTER);
+                            image(blingSprite, baseX, baseY + bobOffset, targetWidth, targetHeight);
+                        }
+                    }
+                }
+            } catch (e) {
+                // non-fatal: continue without bling overlay
+            }
 
             pop(); 
         }
@@ -158,10 +199,9 @@ class PlayerList {
 
     // Check if the mouse is hovering over any goblin's circle
     checkHover(mx, my) {
-        var circleSize = this.circleSize * 1.2;
-        const totalWidth = (goblins.length * circleSize) + ((goblins.length - 1) * this.spacing);
-        const startX = (windowWidth - totalWidth) / 2; // Center horizontally
-        const y = windowHeight - 20 - (circleSize / 2); // 20px up from bottom
+    var circleSize = this.circleSize * 1.2;
+    const startX = 10 + (circleSize / 2);
+    const y = windowHeight - 20 - (circleSize / 2); // 20px up from bottom
 
         for (let i = 0; i < goblins.length; i++) {
             const x = startX + (i * (circleSize + this.spacing));
@@ -181,8 +221,7 @@ class PlayerList {
         try {
             // Compute the same position as in display(): find index and coordinates
             const circleSize = this.circleSize; // base size used there
-            const totalWidth = (goblins.length * circleSize) + ((goblins.length - 1) * this.spacing);
-            const startX = (windowWidth - totalWidth) / 2; // Center horizontally
+            const startX = 10 + (circleSize / 2);
             const y = windowHeight - 20 - (circleSize / 2); // circle center Y
             const idx = goblins.findIndex(g=> g.id === userId);
             if (idx !== -1) {

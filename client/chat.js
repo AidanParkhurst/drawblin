@@ -1,7 +1,7 @@
 import { sendMessage, ws, getApiBase } from "./network.js";
 import { you, goblins } from "./index.js";
 
-// HTML-based Chat overlay that sits atop the canvas (bottom-right)
+// HTML-based Chat overlay that sits atop the canvas (bottom-center)
 class Chat {
     constructor({ height = 180, width = 360 } = {}) {
         // Data
@@ -14,8 +14,8 @@ class Chat {
         this.inputEl = null;
         this.hover = false;
 
-        // Build UI once
-        this.#mount(width, height);
+    // Build UI once
+    this.#mount(width, height);
         // Try to fetch MOTD once the UI mounts
         this.#fetchMOTD();
         this.#attachGlobalHandlers();
@@ -94,7 +94,6 @@ class Chat {
         container.style.width = `${width}px`;
         container.style.height = `${height}px`;
         container.innerHTML = `
-            <button class="chat__toggle" aria-expanded="true" title="Collapse chat">▾</button>
             <div class="chat__messages" aria-live="polite" aria-label="Chat messages"></div>
             <input class="chat__input" type="text" placeholder="Press Enter or Click Here to Chat" maxlength="240" aria-label="Type a message" />
         `;
@@ -104,12 +103,11 @@ class Chat {
         this.container = container;
     this.messagesEl = container.querySelector('.chat__messages');
     this.inputEl = container.querySelector('.chat__input');
-    this.toggleEl = container.querySelector('.chat__toggle');
 
-        // Stop canvas/p5 events when interacting with chat
+        // Only stop events on the actual input element so typing doesn't start canvas interactions.
+        // Allow events on the chat container to fall through to the canvas (so users can draw behind it).
         const stop = (e) => { e.stopPropagation(); };
         ['mousedown', 'mouseup', 'click', 'touchstart', 'touchend', 'pointerdown', 'pointerup'].forEach(evt => {
-            container.addEventListener(evt, stop);
             this.inputEl.addEventListener(evt, stop);
         });
 
@@ -131,14 +129,7 @@ class Chat {
     this.inputEl.addEventListener('focus', () => { if (you) you.frozen = true; });
     this.inputEl.addEventListener('blur', () => { if (you) you.frozen = false; });
 
-        if (this.toggleEl) {
-            this.toggleEl.addEventListener('click', (e) => {
-                e.preventDefault();
-                const collapsed = this.container.classList.toggle('chat--collapsed');
-                this.toggleEl.setAttribute('aria-expanded', String(!collapsed));
-                this.toggleEl.textContent = collapsed ? '▸' : '▾';
-            });
-        }
+        // Chat is always visible; collapse toggle removed.
     }
 
     #attachGlobalHandlers() {
@@ -161,9 +152,10 @@ class Chat {
         const [r, g, b] = you.ui_color;
         const border = `rgba(${r}, ${g}, ${b}, 0.2)`;
         const borderHover = `rgba(${r}, ${g}, ${b}, 0.2)`;
-        this.container.style.borderColor = border;
-        this.container.style.setProperty('--chat-border', border);
-        this.container.style.setProperty('--chat-border-hover', borderHover);
+        // Keep container background/border neutral; style only the input element
+        this.container.style.removeProperty('border-color');
+        this.container.style.removeProperty('--chat-border');
+        this.container.style.removeProperty('--chat-border-hover');
         this.container.style.setProperty('--chat-text', `rgba(${r}, ${g}, ${b}, 0.8)`);
         if (this.inputEl) {
             this.inputEl.style.borderColor = border;
@@ -173,11 +165,7 @@ class Chat {
 
     #focusInput() {
         if (!this.inputEl) return;
-        if (this.container?.classList.contains('chat--collapsed') && this.toggleEl) {
-            this.container.classList.remove('chat--collapsed');
-            this.toggleEl.setAttribute('aria-expanded', 'true');
-            this.toggleEl.textContent = '▾';
-        }
+        // Chat is always visible; focus simply gives keyboard input to the chat box
         this.inputEl.focus();
         // Freeze movement while typing
         if (you) you.frozen = true;
@@ -199,9 +187,18 @@ class Chat {
         }
         el.style.color = color;
         el.textContent = content;
+        // Append the message. Because messages are flex-column and justified to
+        // the bottom, new messages will appear just above the input. We only
+        // force-scroll when the messages overflow the container or when the
+        // user was already at the bottom (so we don't yank them while reading).
+        const wasAtBottom = (this.messagesEl.scrollHeight - this.messagesEl.scrollTop - this.messagesEl.clientHeight) <= 8;
         this.messagesEl.appendChild(el);
-        // Auto-scroll to bottom
-        this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+
+        // If content now overflows, or the user was already at bottom, scroll to show newest
+        const isOverflowing = this.messagesEl.scrollHeight > this.messagesEl.clientHeight + 2;
+        if (isOverflowing || wasAtBottom) {
+            this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+        }
     }
 }
 

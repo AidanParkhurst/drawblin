@@ -5,9 +5,20 @@ class Toolbelt {
     constructor() {
         // Order matters for number hotkeys: 1=brush, 2=spray, 3=eraser
         this.tools = ['brush', 'spray', 'eraser']; // Available tools
+        // Base sizes; may be reduced on mobile
         this.toolSize = 60; // Size of each tool square
         this.spacing = 10; // Spacing between tools
         this.margin = 20; // Margin from screen edge
+        // Apply mobile scaling if available
+        try {
+            const isMobile = (typeof __isMobile !== 'undefined') ? __isMobile : (/(android|iphone|ipad|ipod|blackberry|iemobile|opera mini)/i.test(navigator.userAgent || ''));
+            if (isMobile) {
+                const scale = 0.85; // slightly smaller on mobile
+                this.toolSize = Math.max(40, Math.round(this.toolSize * scale));
+                this.spacing = Math.max(6, Math.round(this.spacing * scale));
+                this.margin = Math.max(8, Math.round(this.margin * scale));
+            }
+        } catch (e) {}
         this.hoveredTool = -1; // Index of currently hovered tool
         
         // Position at bottom right

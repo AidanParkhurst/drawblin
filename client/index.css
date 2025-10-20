@@ -28,6 +28,92 @@ body {
     transition: 0.3s all;
 }
 
+/* Play button (top-left) */
+#play-button {
+    position: fixed;
+    left: 8px;
+    top: 8px;
+    z-index: 1000;
+
+    font-family: 'Neucha';
+    font-size: 18px;
+    text-decoration: none;
+
+    padding: 6px 10px;
+    border-radius: 10px;
+    color: rgba(30, 30, 30, 0.5);
+    border: 3px dashed rgba(30, 30, 30, 0.2);
+    transition: 0.3s all;
+    margin-bottom: 8px; /* spacing if other top-left buttons exist */
+}
+#play-button:hover { color: rgba(30,30,30,0.8); border-color: rgba(30,30,30,0.4); }
+
+/* Dropdown menu for play button (styled like account menu) */
+#play-menu {
+    position: fixed;
+    left: 8px;
+    top: 56px; /* drop lower so it doesn't intersect the opener */
+    z-index: 1000;
+    display: none;
+    flex-direction: column;
+    background: rgba(255,255,255,0); /* transparent background */
+    border-radius: 10px;
+    padding: 8px 10px;
+    /* no dropshadow */
+    box-shadow: none;
+    backdrop-filter: blur(2px);
+    /* no outer dashed border; items will show dashed borders */
+}
+#play-menu.open { display: flex; }
+/* Use similar spacing and layout as account menu buttons */
+#play-menu .play-menu__item {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    font-family: 'Neucha';
+    font-size: 18px;
+    color: rgba(30,30,30,0.7);
+    text-decoration: none;
+    cursor: pointer;
+    border: 3px dashed rgba(30,30,30,0.2);
+    border-radius: 10px;
+    background: rgba(255,255,255,0);
+    transition: 0.2s all;
+    margin-bottom: 8px; /* spacing between buttons like account menu */
+}
+#play-menu .play-menu__item:last-child { margin-bottom: 0; }
+#play-menu .play-menu__item:hover {
+    color: rgba(30,30,30,0.9);
+    border-color: rgba(30,30,30,0.4);
+    background: rgba(255,255,255,0.05);
+}
+
+/* When we render account-style action buttons inside the Play menu (e.g. Leave),
+   apply account menu action styles so the Leave button looks like Sign out. */
+#play-menu .account-menu__action {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: 3px dashed rgba(30, 30, 30, 0.2);
+    border-radius: 10px;
+    font-family: 'Neucha';
+    font-size: 18px;
+    color: rgba(30, 30, 30, 0.7);
+    background: rgba(255, 255, 255, 0);
+    text-decoration: none;
+    text-align: center;
+    cursor: pointer;
+    transition: 0.2s all;
+}
+#play-menu .account-menu__action--danger { color: #a11; }
+#play-menu .account-menu__action:hover {
+    color: rgba(30, 30, 30, 0.9);
+    border-color: rgba(30, 30, 30, 0.4);
+    background: rgba(255, 255, 255, 0.1);
+}
+
 #login-button:hover {
     color: rgba(30, 30, 30, 0.8);
     border: 3px dashed rgba(30, 30, 30, 0.4);
@@ -40,12 +126,12 @@ body {
     right: 8px;
     z-index: 1001;
 
-    min-width: 220px;
-    padding: 10px 12px;
-    border-radius: 10px;
-    background: rgba(240, 240, 240, 255);
-    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
-    backdrop-filter: blur(2px);
+        min-width: 220px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: rgba(255,255,255,0); /* transparent */
+        box-shadow: none;
+        backdrop-filter: blur(2px);
 
     font-family: 'Neucha';
     color: rgba(30, 30, 30, 0.8);
@@ -110,10 +196,11 @@ body {
     color: #a11;
 }
 
-/* Chat overlay */
+/* Chat overlay (now centered horizontally at the bottom) */
 #chat {
     position: fixed;
-    left: 12px;
+    left: 50%;
+    transform: translateX(-50%);
     bottom: 12px;
     z-index: 900; /* under account menu/login */
 
@@ -123,23 +210,30 @@ body {
 
     padding: 10px;
     border-radius: 12px;
-    border: 3px dashed var(--chat-border, rgba(30,30,30,0.05));
+    /* no border on container; keep borders only on input */
+    border: none;
     background: rgba(255,255,255,0.0);
     backdrop-filter: blur(0px);
 
     font-family: 'Neucha';
+    /* Let pointer events pass through the chat container so the canvas beneath
+       can receive clicks/taps. Only the input should accept pointer events. */
+    pointer-events: none;
 }
+/* ensure previous right:auto rule doesn't interfere */
 #chat { right: auto; }
 
-#chat:hover {
-    border-color: var(--chat-border-hover, rgba(30,30,30,0.2));
-}
+/* no container border to update on hover */
 
 
 #chat .chat__messages {
     flex: 1 1 auto;
     overflow-y: auto;
     padding-right: 4px; /* a bit of space from scrollbar */
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end; /* anchor messages to bottom (above input) */
+    gap: 6px; /* small gap between stacked messages */
 }
 
 #chat .chat__message {
@@ -147,6 +241,8 @@ body {
     line-height: 1.2;
     color: var(--chat-text, rgba(30,30,30,0.8));
     word-wrap: break-word;
+    /* make messages shrink-wrap their content so they stack neatly */
+    align-self: flex-start;
 }
 
 #chat .chat__input {
@@ -161,6 +257,9 @@ body {
     background: rgba(255,255,255,0.0);
     outline: none;
     transition: 0.2s all;
+    /* Ensure the input accepts pointer events so users can focus/type while the
+       surrounding chat container remains click-through. */
+    pointer-events: auto;
 }
 
 #chat .chat__input:hover {
@@ -235,37 +334,36 @@ body {
     display: none;
 }
 
-/* Toggle button styling */
-#chat .chat__toggle {
-    position: absolute;
-    top: 3px;
-    right: 3px;
-    padding: 0 6px;
-    height: 24px;
-    border: 3px dashed var(--chat-border, rgba(30,30,30,0.05));
-    border-radius: 10px;
-    background: rgba(255,255,255,0);
-    color: var(--chat-text, rgba(30,30,30,0.8));
-    font-family: 'Neucha';
-    font-size: 16px;
-    line-height: 1;
-    cursor: pointer;
-    z-index: 1;
-}
+/* Chat no longer supports a collapsed/toggle state; related styles removed */
 
-/* Keep the toggle pinned nicely when collapsed */
-#chat.chat--collapsed .chat__toggle {
-    top: -8px;
-    right: -6px;
-}
+/* Mobile / narrow-screen adjustments */
+@media (max-width: 720px) {
+    /* Make chat compact and centered, smaller fonts */
+    #chat {
+        bottom: 8px;
+        padding: 6px;
+        border-radius: 10px;
+        width: calc(100% - 24px);
+        max-width: 560px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 14px;
+    }
+    #chat .chat__messages { max-height: 120px; }
+    #chat .chat__message { font-size: 14px; line-height: 1.1; }
+    #chat .chat__input { font-size: 14px; padding: 6px 8px; }
+    /* Keep transform origin for animations */
+    #chat { transform-origin: bottom center; }
 
-/* Collapsed state */
-#chat.chat--collapsed {
-    width: auto !important;
-    height: auto !important;
-    padding: 6px;
-}
-#chat.chat--collapsed .chat__messages,
-#chat.chat--collapsed .chat__input {
-    display: none;
+    /* Prevent mobile browsers (notably iOS) from auto-zooming when inputs are focused.
+       iOS zooms if font-size < 16px — ensure inputs are at least 16px and disable text-size-adjust. */
+    #chat .chat__input {
+        font-size: 16px; /* ensure >=16px to avoid iOS auto-zoom */
+        -webkit-text-size-adjust: 100%;
+        -ms-text-size-adjust: 100%;
+        touch-action: manipulation; /* limit default gestures */
+    }
+
+    /* House controls slightly smaller */
+    #house-controls { left: 8px; top: 8px; width: 140px; }
 }

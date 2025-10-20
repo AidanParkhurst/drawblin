@@ -86,6 +86,9 @@ function isMobileDevice() {
     } catch { return false; }
 }
 const __isMobile = isMobileDevice();
+// Mobile scale: reduce UI & drawing sizes to make the world feel 'zoomed out' on small screens
+// Choose conservative defaults; allow later tuning.
+const MOBILE_SCALE = __isMobile ? 0.78 : 1.0;
 
 // Helpers: tiny base64 <-> bytes (Uint8Array)
 function __bytesToBase64(bytes) {
@@ -434,37 +437,139 @@ async function start() {
     you.ui_color = calculateUIColor(you.color, [240, 240, 240]);
     
     goblins.push(you);
-    chat = new Chat(); 
-    playerList = new PlayerList(50, 20); // Create the player list with default circle size and spacing
+    // Create UI with mobile-aware sizes
+    const chatHeight = Math.max(120, Math.round(180 * MOBILE_SCALE));
+    const chatWidth = Math.max(220, Math.round(360 * MOBILE_SCALE));
+    chat = new Chat({ height: chatHeight, width: chatWidth });
+
+    const baseCircle = Math.max(36, Math.round(50 * MOBILE_SCALE));
+    const baseSpacing = Math.max(8, Math.round(20 * MOBILE_SCALE));
+    playerList = new PlayerList(baseCircle, baseSpacing); // Create the player list with scaled sizes
     toolbelt = new Toolbelt(); // Create the toolbelt
 
-    let freedraw_portal = new Portal(width / 2, height / 2 - 200, 150, you.ui_color, "Stand here to join\nFree Draw", () => {
-        you.lines = [];
-        connect('freedraw'); // Connect to the freedraw game type
-        joined = true;
-        lobby_type = 'freedraw'; // Set the lobby type to freedraw
-    });
-    // Record reference and hide Free Draw portal on mobile
-    freedrawPortalRef = freedraw_portal;
-    if (__isMobile && freedraw_portal) {
-        freedraw_portal.active = false;
+    // Compact portal row: even smaller portals, dynamic spacing to avoid overlap, one-word labels for mobile
+    // Instead of portals, create a top-left HTML Play button with dropdown menu
+    if (!document.getElementById('play-button')) {
+        const btn = document.createElement('a');
+        btn.id = 'play-button';
+        btn.href = '#';
+        btn.textContent = 'Play online';
+        document.body.appendChild(btn);
+
+        const menu = document.createElement('div');
+        menu.id = 'play-menu';
+        menu.innerHTML = `
+            <a class="play-menu__item" data-mode="freedraw">Free Draw</a>
+            <a class="play-menu__item" data-mode="quickdraw">Team Draw</a>
+            <a class="play-menu__item" data-mode="guessinggame">Guessing Game</a>
+            <a class="play-menu__item" data-mode="house">Your House</a>
+        `;
+        document.body.appendChild(menu);
+
+        const showMenu = (show) => menu.classList.toggle('open', !!show);
+
+        // Helper to update play button text and menu contents based on joined state
+        const updatePlayButtonState = () => {
+            if (!btn || !menu) return;
+            if (joined) {
+                btn.textContent = 'Connected!';
+                // Menu becomes a single red Leave action (re-using account-menu__action styles)
+                menu.innerHTML = `
+                    <button class="play-menu__item account-menu__action account-menu__action--danger" data-action="leave">Leave</button>
+                `;
+            } else {
+                btn.textContent = 'Play online';
+                menu.innerHTML = `
+                    <a class="play-menu__item" data-mode="freedraw">Free Draw</a>
+                    <a class="play-menu__item" data-mode="quickdraw">Team Draw</a>
+                    <a class="play-menu__item" data-mode="guessinggame">Guessing Game</a>
+                    <a class="play-menu__item" data-mode="house">Your House</a>
+                `;
+            }
+        };
+
+        // Initialize play button state in case joined was set earlier (e.g., auto-join on /house)
+        try { updatePlayButtonState(); } catch {}
+
+        // Prevent pointer events from leaking through to the canvas (match account menu behavior)
+        const swallow = (el) => {
+            if (!el) return;
+            const isInteractive = (e) => {
+                const t = e.target;
+                return t && t.closest && t.closest('input, textarea, select, button, a, [role="button"], [contenteditable="true"]');
+            };
+            const cancel = (e) => { e.stopPropagation(); if (!isInteractive(e) && e.cancelable) e.preventDefault(); };
+            const stopOnly = (e) => { e.stopPropagation(); };
+            ['pointerdown','pointermove','mousedown','mousemove','touchstart','touchmove','wheel','dragstart']
+                .forEach((t) => el.addEventListener(t, cancel, { passive: false }));
+            ['pointerup','mouseup','touchend']
+                .forEach((t) => el.addEventListener(t, stopOnly));
+        };
+        // Swallow everything inside the menu; it should never leak to the canvas
+        swallow(menu);
+
+        // For the button: allow its click to work, but block pointer/mouse from reaching canvas
+        const cancelBtn = (e) => { e.stopPropagation(); if (e.cancelable) e.preventDefault(); };
+        const stopOnlyBtn = (e) => { e.stopPropagation(); };
+        ['pointerdown','pointermove','mousedown','mousemove','touchstart','touchmove','wheel','dragstart']
+            .forEach((t) => btn.addEventListener(t, cancelBtn, { passive: false }));
+        ['pointerup','mouseup','touchend']
+            .forEach((t) => btn.addEventListener(t, stopOnlyBtn));
+
+        btn.addEventListener('click', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            // When connected, open the small Leave menu; otherwise open play modes
+            showMenu(!menu.classList.contains('open'));
+        });
+
+        menu.addEventListener('click', (e) => {
+            const item = e.target.closest('.play-menu__item');
+            if (!item) return;
+            // If this is the 'Leave' action, handle disconnect
+            const action = item.getAttribute('data-action');
+            if (action === 'leave') {
+                try { if (ws && ws.readyState !== WebSocket.CLOSED) ws.close(); } catch {}
+                // Reload/back to leave lobby UI
+                try { window.location.reload(); } catch { try { window.history.back(); } catch {} }
+                return;
+            }
+            // Otherwise, treat as a mode selection
+            const mode = item.getAttribute('data-mode');
+            if (!mode) return;
+            try { you.lines = []; } catch {}
+            if (mode === 'house') {
+                try {
+                    if (!isAuthConfigured()) { showMenu(false); return; }
+                    const user = getUser();
+                    if (!user || !user.id) { showMenu(false); return; }
+                    const slug = (user.id || '').toLowerCase().replaceAll('-', '').slice(0, 12);
+                    const basePath = window.location.pathname.replace(/\/[^/]*$/, '/');
+                    const url = `${window.location.origin}${basePath}house?u=${encodeURIComponent(slug)}`;
+                    window.location.assign(url);
+                } catch (err) {
+                    console.warn('Failed to open house from Play menu', err);
+                }
+                return;
+            }
+            try { connect(mode); } catch {}
+            joined = true;
+            // Update button/menu for connected state
+            try { updatePlayButtonState(); } catch {}
+            try {
+                if (ws) {
+                    ws.onclose = () => { joined = false; try { updatePlayButtonState(); } catch {} };
+                }
+            } catch {}
+            lobby_type = mode;
+            if (mode === 'quickdraw' || mode === 'guessinggame') timer = 20;
+            showMenu(false);
+        });
+
+        // Close menu when clicking outside
+        window.addEventListener('click', (e) => {
+            if (!btn.contains(e.target) && !menu.contains(e.target)) showMenu(false);
+        });
     }
-    let quickdraw_portal = new Portal(width / 2 + 400, height / 2 - 200, 150, you.ui_color, "Stand here to join\nTeam Draw", () => {
-        you.lines = [];
-        // game_state = 'waiting'; // Set game state to waiting
-        connect('quickdraw'); // Connect to the quickdraw game type
-        joined = true;
-        lobby_type = 'quickdraw'; // Set the lobby type to quickdraw
-        timer = 20;
-    });
-    let guessinggame_portal = new Portal(width / 2 - 400, height / 2 - 200, 150, you.ui_color, "Stand here to join\nGuessing Game", () => {
-        you.lines = [];
-        connect('guessinggame'); // Connect to the guessing game type
-        joined = true;
-        lobby_type = 'guessinggame'; // Set the lobby type to guessinggame
-        timer = 20;
-    });
-    portals.push(freedraw_portal, quickdraw_portal, guessinggame_portal);
 
 
     // If URL indicates a house lobby (supports /house and /house.html for static hosting), auto-join and mount controls
@@ -527,28 +632,8 @@ function ensureHomePortal() {
         homePortal = null;
     }
 
-    // Create if needed
-    if (hasUser && !homePortal && !inHouse) {
-        let redirecting = false;
-        const slug = (user.id || '').toLowerCase().replaceAll('-', '').slice(0, 12);
-        homePortal = new Portal(
-            width / 2 + 400,
-            height / 2 + 150,
-            150,
-            you?.ui_color || [0,0,0],
-            "Stand here to go to\nYour House",
-            () => {
-                if (redirecting) return;
-                redirecting = true;
-                const basePath = window.location.pathname.replace(/\/[^/]*$/, '/');
-                // Use clean URL /house?u=... (server or static host should serve house.html for /house request)
-                const url = `${window.location.origin}${basePath}house?u=${encodeURIComponent(slug)}`;
-                window.location.assign(url);
-            },
-            { oneshot: true }
-        );
-        portals.push(homePortal);
-    }
+    // We no longer create an in-world home portal. 'Your House' is available
+    // from the Play menu (top-left) for signed-in users.
 
     if (homePortal && you && Array.isArray(you.ui_color)) {
         homePortal.color = [...you.ui_color];
@@ -619,12 +704,17 @@ window.windowResized = () => {
     resizeCanvas(windowWidth, windowHeight);
     // Move portals to new positions based on the new window size
     // The first three portals are game-mode portals (creation order stable)
-    if (portals[0]) { portals[0].x = width / 2; portals[0].y = height / 2 - 200; }
-    if (portals[1]) { portals[1].x = width / 2 + 400; portals[1].y = height / 2 - 200; }
-    if (portals[2]) { portals[2].x = width / 2 - 400; portals[2].y = height / 2 - 200; }
-    if (homePortal) { homePortal.x = width / 2 + 400; homePortal.y = height / 2 + 150; }
+    // Recompute compact portal row positions
+    const compactPortalSize = Math.max(48, Math.round(86 * MOBILE_SCALE));
+    const compactSpacing = Math.max(Math.round(compactPortalSize * 1.8), Math.round(110 * MOBILE_SCALE));
+    const baseY = height / 2 - Math.round(280 * MOBILE_SCALE);
+    const centerX = width / 2;
+    if (portals[0]) { portals[0].x = centerX; portals[0].y = baseY; portals[0].width = portals[0].width || compactPortalSize; }
+    if (portals[1]) { portals[1].x = centerX + compactSpacing; portals[1].y = baseY; portals[1].width = portals[1].width || compactPortalSize; }
+    if (portals[2]) { portals[2].x = centerX - compactSpacing; portals[2].y = baseY; portals[2].width = portals[2].width || compactPortalSize; }
+    if (homePortal) { homePortal.x = centerX + compactSpacing; homePortal.y = height / 2 + Math.round(150 * MOBILE_SCALE); homePortal.width = homePortal.width || compactPortalSize; }
     // Keep our Free Draw portal ref in sync, if present
-    if (freedrawPortalRef) { freedrawPortalRef.x = width / 2; freedrawPortalRef.y = height / 2 - 200; }
+    if (freedrawPortalRef) { freedrawPortalRef.x = centerX; freedrawPortalRef.y = baseY; }
     // no-op with HTML chat; kept for compatibility
 }
 
@@ -640,19 +730,7 @@ window.draw = () => {
         for (let portal of portals) {
             portal.update(deltaTime);
         }
-        // Mobile-only: show a friendly message in place of the Free Draw portal
-        if (__isMobile && freedrawPortalRef) {
-            push();
-            translate(freedrawPortalRef.x, freedrawPortalRef.y);
-            textAlign(CENTER, CENTER);
-            noStroke();
-            // semitransparent rgb(30)
-            fill(30, 30, 30, 170);
-            textSize(18);
-            const msg = "Thanks for visiting Drawblins!\nUnfortunately, this game won't work on a phone,\nbecause you need a keyboard to move.\nSorry about that. -Aidan";
-            text(msg, 0, 0);
-            pop();
-        }
+        // On mobile the Free Draw portal is visible; no apology overlay needed.
     }
 
 
@@ -979,12 +1057,45 @@ window.mousePressed = () => {
     if (chat.isMouseInteracting() || playerList.isMouseInteracting() || toolbelt.isMouseInteracting()) {
         return; // Don't start drawing if interacting with UI
     }
+
+    // Mobile: tap on your goblin to enter 'move' mode instead of drawing
+    if (__isMobile && you) {
+        const d = dist(mouseX, mouseY, you.x, you.y);
+        const hitRadius = Math.max(you.size, 40) * 0.6; // tolerant hit area
+        if (d <= hitRadius) {
+            // Enter mobile move
+            if (!you._mobileMoveActive) {
+                you._mobileMoveActive = true;
+                you._prevToolBeforeMobileMove = you.tool;
+                you.tool = 'move';
+                // Snap cursor to the goblin immediately so it can lead when the finger moves
+                you.cursor.x = you.x;
+                you.cursor.y = you.y;
+                // Freeze drawing state if any
+                drawing = false;
+            }
+            // Start moving – we don't want drawing to start
+            return;
+        }
+    }
     
     if (game_state === 'voting' || game_state === 'pre-voting') {
         return;
     }
+    // Don't start drawing if mobile move active
+    if (you._mobileMoveActive) return;
+
+    // Start drawing: snap cursor immediately to the pointer so we don't draw a long segment
     drawing = true;
-    last_mouse = createVector(you.cursor.x, you.cursor.y);
+    // Force the goblin's cursor to the exact pointer to avoid interpolation artifacts
+    if (you && you.cursor) {
+        you.cursor.x = mouseX;
+        you.cursor.y = mouseY;
+    }
+    // Initialize last_mouse at the pointer as well (prevents connecting to previous stroke)
+    last_mouse = createVector(mouseX, mouseY);
+    // Reset drag accumulators so the first grain/play doesn't jump
+    lastDragX = mouseX; lastDragY = mouseY; dragAccumDist = 0;
     last_line_count = you.lines.length; // Store the initial line count
     // Reset per-stroke spray grain flag
     window.__sprayGrainThisStroke = false;
@@ -993,6 +1104,17 @@ window.mousePressed = () => {
 }
 
 window.mouseReleased = () => {
+    // If mobile move was active for our local goblin, end it and restore tool
+    if (__isMobile && you && you._mobileMoveActive) {
+        you._mobileMoveActive = false;
+        if (you._prevToolBeforeMobileMove) {
+            you.tool = you._prevToolBeforeMobileMove;
+            you._prevToolBeforeMobileMove = null;
+        }
+        // ensure we don't fall into drawing logic below
+        drawing = false;
+        return;
+    }
     if (drawing && you.lines.length === last_line_count && you.tool !== 'eraser') { // If no new line was added and not using eraser
     const weight = (you.tool === 'spray') ? 10 : 5;
         var l = new Line(createVector(you.cursor.x, you.cursor.y), createVector(you.cursor.x, you.cursor.y), you.color, weight);

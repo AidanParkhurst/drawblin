@@ -61,6 +61,10 @@ class Goblin {
         // Tool options
         this.eraserRadius = 15; // default eraser radius in pixels
 
+    // Mobile move mode state (toggled by tapping your own goblin on touch devices)
+    this._mobileMoveActive = false;
+    this._prevToolBeforeMobileMove = null;
+
         // Appear/spawn animation state
         this._spawnActive = false;      // currently animating
         this._spawnTime = 0;            // ms since start
@@ -150,8 +154,38 @@ class Goblin {
 
         this.simplify_timer += delta;
         if(this.local) {
-            this.check_input();
-            this.move();
+            // If mobile move is active, behave as: cursor leads, goblin follows to close the gap.
+            if (this._mobileMoveActive) {
+                // Place cursor at finger position (immediate) so it can precede the goblin.
+                this.cursor.x = mouseX;
+                this.cursor.y = mouseY;
+
+                // Compute vector from goblin to cursor and clamp its length to cursor_range
+                this.cursor_vector = createVector(this.cursor.x - this.x, this.cursor.y - this.y);
+                const distToCursor = this.cursor_vector.mag();
+                if (distToCursor > this.cursor_range) {
+                    this.cursor_vector.setMag(this.cursor_range);
+                    this.cursor.x = this.x + this.cursor_vector.x;
+                    this.cursor.y = this.y + this.cursor_vector.y;
+                }
+
+                // Move the goblin toward the cursor with smoothing. The farther the cursor, the higher the follow strength.
+                const gap = this.cursor_vector.mag();
+                // Map gap 0..cursor_range -> follow 0.10..0.7 (tunable)
+                const minFollow = 0.10;
+                const maxFollow = 0.7;
+                const followStrength = minFollow + (Math.min(gap, this.cursor_range) / this.cursor_range) * (maxFollow - minFollow);
+                const prevX = this.x;
+                const prevY = this.y;
+                this.x = lerp(this.x, this.cursor.x, followStrength);
+                this.y = lerp(this.y, this.cursor.y, followStrength);
+                // Update velocity to reflect recent movement for animation/audio
+                this.velocity.x = this.x - prevX;
+                this.velocity.y = this.y - prevY;
+            } else {
+                this.check_input();
+                this.move();
+            }
         }
         
         // Update walking animation cycle when moving
@@ -179,8 +213,11 @@ class Goblin {
 
         // TODO: Point the goblin's pen at the cursor instead
         if (this.local){
-            this.cursor.x = lerp(this.cursor.x, mouseX, 0.3);
-            this.cursor.y = lerp(this.cursor.y, mouseY, 0.3);
+            // When mobile move is active, the cursor is driven directly by touch (above). Otherwise, keep prior smoothing behavior.
+            if (!this._mobileMoveActive) {
+                this.cursor.x = lerp(this.cursor.x, mouseX, 0.3);
+                this.cursor.y = lerp(this.cursor.y, mouseY, 0.3);
+            }
         }
         // Limit the cursor's distance from the goblin
         this.cursor_vector = createVector(this.cursor.x - this.x, this.cursor.y - this.y);
