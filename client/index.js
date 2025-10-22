@@ -441,6 +441,8 @@ async function start() {
     const chatHeight = Math.max(120, Math.round(180 * MOBILE_SCALE));
     const chatWidth = Math.max(220, Math.round(360 * MOBILE_SCALE));
     chat = new Chat({ height: chatHeight, width: chatWidth });
+    // Start hidden until we've actually joined a lobby
+    try { if (chat && chat.container) chat.container.style.display = 'none'; } catch (e) { /* ignore */ }
 
     const baseCircle = Math.max(36, Math.round(50 * MOBILE_SCALE));
     const baseSpacing = Math.max(8, Math.round(20 * MOBILE_SCALE));
@@ -462,11 +464,55 @@ async function start() {
             <a class="play-menu__item" data-mode="freedraw">Free Draw</a>
             <a class="play-menu__item" data-mode="quickdraw">Team Draw</a>
             <a class="play-menu__item" data-mode="guessinggame">Guessing Game</a>
-            <a class="play-menu__item" data-mode="house">Your House</a>
+            <a class="play-menu__item" data-mode="house">Private Lobby</a>
         `;
         document.body.appendChild(menu);
 
-        const showMenu = (show) => menu.classList.toggle('open', !!show);
+        // Position-aware menu toggler: on desktop place above the opener (by default),
+        // but allow forcing placement below (used when the button shows "Connected!").
+        const showMenu = (show, opener = btn, placeBelow = false) => {
+            menu.classList.toggle('open', !!show);
+            if (!show) {
+                // Hide via CSS display toggling elsewhere; keep simple here
+                menu.style.display = 'none';
+                return;
+            }
+            // Make menu visible to measure
+            menu.style.display = 'flex';
+            // On mobile, stick to the default top-left placement defined in CSS
+            try {
+                if (__isMobile) {
+                    // Use CSS top/left from stylesheet (already defaults to top-left)
+                    menu.style.left = '';
+                    menu.style.top = '';
+                    return;
+                }
+            } catch (e) { /* if __isMobile missing just fallback to desktop behavior */ }
+
+            // Desktop: position menu centered above the opener by default, or below if requested
+            try {
+                const rect = opener.getBoundingClientRect();
+                // Temporarily ensure menu has auto size to measure
+                menu.style.width = 'auto';
+                const mW = Math.min(menu.offsetWidth || 240, window.innerWidth - 16);
+                const mH = menu.offsetHeight || 140;
+                const left = Math.max(8, Math.min(window.innerWidth - mW - 8, rect.left + rect.width / 2 - mW / 2));
+                let top;
+                const gap = 8;
+                if (placeBelow) {
+                    top = Math.min(window.innerHeight - mH - 8, rect.bottom + gap);
+                } else {
+                    // Prefer above, but if there's not enough room, fall back to below
+                    const above = rect.top - mH - gap;
+                    if (above >= 8) top = above;
+                    else top = Math.min(window.innerHeight - mH - 8, rect.bottom + gap);
+                }
+                menu.style.left = `${left}px`;
+                menu.style.top = `${top}px`;
+            } catch (e) {
+                // Fallback: do nothing and allow CSS to position
+            }
+        };
 
         // Helper to update play button text and menu contents based on joined state
         const updatePlayButtonState = () => {
@@ -477,19 +523,35 @@ async function start() {
                 menu.innerHTML = `
                     <button class="play-menu__item account-menu__action account-menu__action--danger" data-action="leave">Leave</button>
                 `;
+                // Show chat when joined
+                try { if (chat && chat.container) chat.container.style.display = ''; } catch (e) { /* ignore */ }
+                // Ensure top-left placement for connected button
+                try { btn.classList.remove('play-bottom'); } catch (e) {}
             } else {
                 btn.textContent = 'Play online';
                 menu.innerHTML = `
                     <a class="play-menu__item" data-mode="freedraw">Free Draw</a>
                     <a class="play-menu__item" data-mode="quickdraw">Team Draw</a>
                     <a class="play-menu__item" data-mode="guessinggame">Guessing Game</a>
-                    <a class="play-menu__item" data-mode="house">Your House</a>
+                    <a class="play-menu__item" data-mode="house">Private Lobby</a>
                 `;
+                // Hide chat when not in a lobby
+                try { if (chat && chat.container) chat.container.style.display = 'none'; } catch (e) { /* ignore */ }
+                // On desktop (non-mobile), move play button to bottom center for prominence
+                try {
+                    if (!__isMobile) {
+                        btn.classList.add('play-bottom');
+                    } else {
+                        btn.classList.remove('play-bottom');
+                    }
+                } catch (e) { /* ignore */ }
             }
         };
 
-        // Initialize play button state in case joined was set earlier (e.g., auto-join on /house)
-        try { updatePlayButtonState(); } catch {}
+    // Initialize play button state in case joined was set earlier (e.g., auto-join on /house)
+    try { updatePlayButtonState(); } catch {}
+    // Expose for other startup code (e.g., auto-join on /house) so it can refresh the button/menu
+    try { window.updatePlayButtonState = updatePlayButtonState; } catch {}
 
         // Prevent pointer events from leaking through to the canvas (match account menu behavior)
         const swallow = (el) => {
@@ -509,7 +571,9 @@ async function start() {
         swallow(menu);
 
         // For the button: allow its click to work, but block pointer/mouse from reaching canvas
-        const cancelBtn = (e) => { e.stopPropagation(); if (e.cancelable) e.preventDefault(); };
+    // Stop propagation so pointer events don't leak to the canvas, but don't preventDefault()
+    // — calling preventDefault on touch/pointerdown suppresses subsequent click events on mobile.
+    const cancelBtn = (e) => { e.stopPropagation(); };
         const stopOnlyBtn = (e) => { e.stopPropagation(); };
         ['pointerdown','pointermove','mousedown','mousemove','touchstart','touchmove','wheel','dragstart']
             .forEach((t) => btn.addEventListener(t, cancelBtn, { passive: false }));
@@ -518,8 +582,9 @@ async function start() {
 
         btn.addEventListener('click', (e) => {
             e.preventDefault(); e.stopPropagation();
-            // When connected, open the small Leave menu; otherwise open play modes
-            showMenu(!menu.classList.contains('open'));
+            // When connected, open the small Leave menu underneath; otherwise open play modes above
+            const placeBelow = !!joined;
+            showMenu(!menu.classList.contains('open'), btn, placeBelow);
         });
 
         menu.addEventListener('click', (e) => {
@@ -529,8 +594,15 @@ async function start() {
             const action = item.getAttribute('data-action');
             if (action === 'leave') {
                 try { if (ws && ws.readyState !== WebSocket.CLOSED) ws.close(); } catch {}
-                // Reload/back to leave lobby UI
-                try { window.location.reload(); } catch { try { window.history.back(); } catch {} }
+                // Navigate away from the house URL so reloading doesn't reconnect to the same house.
+                try {
+                    const basePath = window.location.pathname.replace(/\/[^/]*$/, '/');
+                    const url = `${window.location.origin}${basePath}`;
+                    window.location.assign(url);
+                } catch (err) {
+                    // Fallback: reload or history.back
+                    try { window.location.reload(); } catch { try { window.history.back(); } catch {} }
+                }
                 return;
             }
             // Otherwise, treat as a mode selection
@@ -565,9 +637,15 @@ async function start() {
             showMenu(false);
         });
 
-        // Close menu when clicking outside
-        window.addEventListener('click', (e) => {
+        // Close menu when pressing mouse down outside (match account menu behavior)
+        window.addEventListener('mousedown', (e) => {
             if (!btn.contains(e.target) && !menu.contains(e.target)) showMenu(false);
+        });
+        // Close on Escape when open
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && menu.classList.contains('open')) {
+                showMenu(false);
+            }
         });
     }
 
@@ -582,6 +660,7 @@ async function start() {
             try { await authReady(); me = getUser()?.id || ''; } catch {}
             connect('house', { u: house_owner_uid, me });
             joined = true;
+            try { if (window.updatePlayButtonState) window.updatePlayButtonState(); } catch {}
             lobby_type = 'freedraw'; // server will send house_mode to refine
             // Mount host controls and set visibility based on ownership
             await authReady();
@@ -632,7 +711,7 @@ function ensureHomePortal() {
         homePortal = null;
     }
 
-    // We no longer create an in-world home portal. 'Your House' is available
+    // We no longer create an in-world home portal. 'Private Lobby' (mode: 'house') is available
     // from the Play menu (top-left) for signed-in users.
 
     if (homePortal && you && Array.isArray(you.ui_color)) {
@@ -1043,7 +1122,15 @@ function drawTitle() {
     textAlign(CENTER);
     fill(you.ui_color[0], you.ui_color[1], you.ui_color[2]);
     textSize(16);
-    text("Click to Draw, WASD or Arrows to Move", width / 2, height / 2 + 50);
+    // Mobile-friendly instruction text
+    try {
+        const hint = (typeof __isMobile !== 'undefined' && __isMobile)
+            ? 'Drag your goblin to move. Draw within the range'
+            : 'Click to Draw, WASD or Arrows to Move';
+        text(hint, width / 2, height / 2 + 50);
+    } catch (e) {
+        text('Click to Draw, WASD or Arrows to Move', width / 2, height / 2 + 50);
+    }
     textSize(32);
     textStyle(BOLD);
     text("Drawblins!", width / 2, height / 2);
@@ -1089,11 +1176,24 @@ window.mousePressed = () => {
     drawing = true;
     // Force the goblin's cursor to the exact pointer to avoid interpolation artifacts
     if (you && you.cursor) {
+        // If the pointer is outside the goblin's allowed cursor_range, clamp it to the edge
         you.cursor.x = mouseX;
         you.cursor.y = mouseY;
+        try {
+            const vec = createVector(you.cursor.x - you.x, you.cursor.y - you.y);
+            const maxR = typeof you.cursor_range === 'number' ? you.cursor_range : 200;
+            if (vec.mag() > maxR) {
+                vec.setMag(maxR);
+                you.cursor.x = you.x + vec.x;
+                you.cursor.y = you.y + vec.y;
+            }
+        } catch (e) {
+            // If createVector isn't available for some reason, fall back to direct assignment
+        }
     }
     // Initialize last_mouse at the pointer as well (prevents connecting to previous stroke)
-    last_mouse = createVector(mouseX, mouseY);
+    // Ensure last_mouse matches the (possibly clamped) cursor so the first segment doesn't connect from the edge to the raw click
+    last_mouse = createVector(you.cursor.x, you.cursor.y);
     // Reset drag accumulators so the first grain/play doesn't jump
     lastDragX = mouseX; lastDragY = mouseY; dragAccumDist = 0;
     last_line_count = you.lines.length; // Store the initial line count
@@ -1170,14 +1270,20 @@ window.addEventListener('keydown', (event) => {
     if (prevTool !== you.tool && you.tool === 'eraser') {
         try { stopDragImmediate(); stopSprayImmediate(); } catch {}
     }
-    you.keyStates[event.key] = true;
+    try {
+        const k = (event.key || '').toLowerCase();
+        you.keyStates[k] = true;
+    } catch (e) { you.keyStates[event.key] = true; }
 });
 window.addEventListener('keyup', (event) => {
     const t = event.target;
     const tag = t && t.tagName ? t.tagName.toLowerCase() : '';
     const typing = tag === 'input' || tag === 'textarea' || (t && t.isContentEditable);
     if (typing) return; // ignore keyup from typing contexts
-    you.keyStates[event.key] = false; // Reset the key state when the key is
+    try {
+        const k = (event.key || '').toLowerCase();
+        you.keyStates[k] = false; // Reset the key state when the key is
+    } catch (e) { you.keyStates[event.key] = false; }
 });
 
 window.addEventListener('blur', () => {

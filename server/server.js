@@ -10,6 +10,9 @@ import url from 'url';
 import FreeDrawLobby from './lobbies/FreeDrawLobby.js';
 import QuickDrawLobby from './lobbies/QuickDrawLobby.js';
 import GuessingGameLobby from './lobbies/GuessingGameLobby.js';
+import FreeDrawMobileLobby from './lobbies/FreeDrawMobileLobby.js';
+import QuickDrawMobileLobby from './lobbies/QuickDrawMobileLobby.js';
+import GuessingGameMobileLobby from './lobbies/GuessingGameMobileLobby.js';
 import { incrLobby } from './metrics.js';
 import path from 'path';
 import { readFileSync } from 'fs';
@@ -270,7 +273,7 @@ const wss = new WebSocketServer({
     verifyClient: (info) => {
         // Parse the URL to get the path
         const pathname = url.parse(info.req.url).pathname;
-        const validPaths = ['/freedraw', '/quickdraw', '/guessinggame', '/house'];
+        const validPaths = ['/freedraw', '/quickdraw', '/guessinggame', '/house', '/freedraw_mobile', '/quickdraw_mobile', '/guessinggame_mobile'];
         
         if (!validPaths.includes(pathname)) {
             console.warn(`Rejected connection to invalid path: ${pathname}`);
@@ -384,6 +387,14 @@ function findOrCreateLobby(lobbyType = 'freedraw') {
         case 'guessing game':
             newLobby = new GuessingGameLobby(nextLobbyId++);
             break;
+        case 'quickdraw_mobile':
+        case 'quick draw mobile':
+            newLobby = new QuickDrawMobileLobby(nextLobbyId++);
+            break;
+        case 'guessinggame_mobile':
+        case 'guessing game mobile':
+            newLobby = new GuessingGameMobileLobby(nextLobbyId++);
+            break;
         case 'freedraw':
         case 'free draw':
         default:
@@ -410,6 +421,15 @@ wss.on('connection', (socket, request) => {
             break;
         case '/guessinggame':
             lobbyType = 'guessinggame';
+            break;
+        case '/freedraw_mobile':
+            lobbyType = 'freedraw_mobile';
+            break;
+        case '/quickdraw_mobile':
+            lobbyType = 'quickdraw_mobile';
+            break;
+        case '/guessinggame_mobile':
+            lobbyType = 'guessinggame_mobile';
             break;
         case '/house':
             lobbyType = 'house';

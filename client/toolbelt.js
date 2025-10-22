@@ -71,14 +71,15 @@ class Toolbelt {
             
             // Draw tool background with dotted border (same style as other UI)
             fill(240); // Light gray background
-            drawingContext.setLineDash([20, 10]); // Dashed line style (smaller than other UI)
+            // Even shorter dashes and larger gaps for a lighter appearance
+            drawingContext.setLineDash([6, 10]); // shorter dash (6px) with larger gap (10px)
             stroke(you.ui_color[0], you.ui_color[1], you.ui_color[2], 100);
-            strokeWeight(3);
+            strokeWeight(2);
             
             // Highlight current tool or hovered tool
             if (you.tool === tool) {
                 stroke(you.ui_color[0], you.ui_color[1], you.ui_color[2], 200); // Stronger border for current tool
-                strokeWeight(4);
+                strokeWeight(3);
             } else if (i === this.hoveredTool) {
                 stroke(you.ui_color[0], you.ui_color[1], you.ui_color[2], 150); // Medium border for hovered tool
                 strokeWeight(3);

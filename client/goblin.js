@@ -182,6 +182,8 @@ class Goblin {
                 // Update velocity to reflect recent movement for animation/audio
                 this.velocity.x = this.x - prevX;
                 this.velocity.y = this.y - prevY;
+                // Keep on-screen during mobile-follow mode as well
+                try { this.clampToViewport(); } catch (e) {}
             } else {
                 this.check_input();
                 this.move();
@@ -521,6 +523,58 @@ class Goblin {
         // Update position based on velocity
         this.x += this.velocity.x;
         this.y += this.velocity.y;
+
+        // Keep local goblins on their own viewport: softly bounce them back if they hit the edges
+        try {
+            this.clampToViewport();
+        } catch (e) {
+            // ignore if width/height aren't available
+        }
+    }
+
+    // Prevent the local goblin from moving off the visible screen. When the goblin
+    // hits a viewport edge, gently nudge it back and invert a bit of its velocity
+    // to produce a soft bounce effect.
+    clampToViewport() {
+        if (!this.local) return;
+        // Use p5 width/height when available, fallback to window
+        const vw = (typeof width === 'number') ? width : (window.innerWidth || 0);
+        const vh = (typeof height === 'number') ? height : (window.innerHeight || 0);
+        if (!vw || !vh) return;
+
+        // Keep the goblin's visual center inside the viewport with a small padding
+        const padding = 8;
+        const halfSize = Math.max(10, (this.size || 40) * 0.5);
+        const minX = padding + halfSize;
+        const maxX = Math.max(minX, vw - padding - halfSize);
+        const minY = padding + halfSize;
+        const maxY = Math.max(minY, vh - padding - halfSize);
+
+        // Soft bounce factor: how much velocity is inverted and how strongly we nudge back
+        const bounceVelFactor = 0.4; // keep some momentum but dampen
+        const penetrationFactor = 0.3; // how far inside the bounds to place when penetrating
+
+        // X axis
+        if (this.x < minX) {
+            const pen = minX - this.x;
+            this.x = minX + pen * penetrationFactor;
+            this.velocity.x = -this.velocity.x * bounceVelFactor;
+        } else if (this.x > maxX) {
+            const pen = this.x - maxX;
+            this.x = maxX - pen * penetrationFactor;
+            this.velocity.x = -this.velocity.x * bounceVelFactor;
+        }
+
+        // Y axis
+        if (this.y < minY) {
+            const pen = minY - this.y;
+            this.y = minY + pen * penetrationFactor;
+            this.velocity.y = -this.velocity.y * bounceVelFactor;
+        } else if (this.y > maxY) {
+            const pen = this.y - maxY;
+            this.y = maxY - pen * penetrationFactor;
+            this.velocity.y = -this.velocity.y * bounceVelFactor;
+        }
     }
 
     say(message) {

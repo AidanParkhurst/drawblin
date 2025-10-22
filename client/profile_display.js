@@ -240,11 +240,12 @@ class ProfileDisplay {
         push();
         
     // Draw the main rectangle with dotted border (same style as chat and other UI)
-        fill(240); 
-        drawingContext.setLineDash([30, 20]); // Set dashed line style
-        stroke(you.ui_color[0], you.ui_color[1], you.ui_color[2], 100);
-        strokeWeight(4);
-        rect(this.x, this.y, this.width, this.height, 10); // 10px rounded corners
+    fill(240); 
+    // Even shorter dashes and larger gaps for a lighter appearance
+    drawingContext.setLineDash([6, 12]); // 6px dash, 12px gap
+    stroke(you.ui_color[0], you.ui_color[1], you.ui_color[2], 100);
+    strokeWeight(2);
+    rect(this.x, this.y, this.width, this.height, 10); // 10px rounded corners
         
         // Reset line dash for other elements
         drawingContext.setLineDash([]);

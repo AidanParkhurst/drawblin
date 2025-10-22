@@ -48,6 +48,23 @@ body {
 }
 #play-button:hover { color: rgba(30,30,30,0.8); border-color: rgba(30,30,30,0.4); }
 
+/* When the play button is moved to the bottom center (desktop, not mobile) */
+#play-button.play-bottom {
+    left: 50% !important;
+    top: auto !important;
+    bottom: 12px !important;
+    transform: translateX(-50%) !important;
+    /* make it a bit more prominent when centered */
+    padding: 10px 16px;
+    font-size: 18px;
+}
+
+/* When host house controls are visible, hide the Play button/menu to avoid overlap */
+body.house-mode #play-button,
+body.house-mode #play-menu {
+    display: none !important;
+}
+
 /* Dropdown menu for play button (styled like account menu) */
 #play-menu {
     position: fixed;

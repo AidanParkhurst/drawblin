@@ -176,9 +176,10 @@ async function bindLoginButton() {
   swallow(menuEl);
   // For the button: allow its click to work, but block pointer/mouse from reaching canvas
   if (btn) {
-    const cancel = (e) => { e.stopPropagation(); if (e.cancelable) e.preventDefault(); };
+    // Stop propagation so events don't reach the canvas and start drawing, but do not call preventDefault()
+    // on pointerdown/touchstart — preventing default can stop the subsequent click event on mobile.
+    const cancel = (e) => { e.stopPropagation(); };
     const stopOnly = (e) => { e.stopPropagation(); };
-    // Prevent drawing start but keep clicks functional
     ['pointerdown','pointermove','mousedown','mousemove','touchstart','touchmove','wheel','dragstart']
       .forEach((t) => btn.addEventListener(t, cancel, { passive: false }));
     ['pointerup','mouseup','touchend']
@@ -196,14 +197,17 @@ async function bindLoginButton() {
     } catch {
       if (nameInput) nameInput.value = '';
     }
-    // One-time outside click closer per open
+    // One-time outside click closer per open (mousedown for immediacy)
     const onDocClick = (ev) => {
       if (!menuEl) return;
       if (ev.target === btn || menuEl.contains(ev.target)) return;
       closeMenu();
       document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKeyDown);
     };
-    setTimeout(() => document.addEventListener('mousedown', onDocClick), 0);
+    // Close on Escape while open
+    const onKeyDown = (ev) => { if (ev.key === 'Escape') { closeMenu(); document.removeEventListener('mousedown', onDocClick); document.removeEventListener('keydown', onKeyDown); } };
+    setTimeout(() => { document.addEventListener('mousedown', onDocClick); document.addEventListener('keydown', onKeyDown); }, 0);
   };
 
   const render = (u) => {

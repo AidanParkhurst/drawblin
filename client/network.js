@@ -15,6 +15,16 @@ function getApiBase() {
 
 let ws = null;
 
+// Lightweight mobile detection (kept local to avoid importing index.js and creating a cycle)
+function isMobileDevice() {
+    try {
+        const ua = (navigator.userAgent || navigator.vendor || window.opera || '').toLowerCase();
+        const uaHit = /(android|iphone|ipad|ipod|blackberry|iemobile|opera mini)/i.test(ua);
+        const coarse = (window.matchMedia && matchMedia('(pointer:coarse)').matches) || (navigator.maxTouchPoints || 0) > 1;
+        return !!(uaHit || coarse);
+    } catch (e) { return false; }
+}
+
 function connect(gameType = 'freedraw', query = null) {
     // Close existing connection if any
     if (ws && ws.readyState !== WebSocket.CLOSED) {
@@ -27,6 +37,16 @@ function connect(gameType = 'freedraw', query = null) {
         console.error(`Invalid game type: ${gameType}. Valid types are: ${validGameTypes.join(', ')}`);
         gameType = 'freedraw'; // Default fallback
     }
+
+    // If on mobile, map main game types to their mobile endpoints (except house which remains the same)
+    try {
+        if (isMobileDevice() && gameType !== 'house') {
+            const mobileSuffix = '_mobile';
+            const mobileCandidate = `${gameType}${mobileSuffix}`;
+            // Use the mobile endpoint name; server accepts these paths (e.g., /freedraw_mobile)
+            gameType = mobileCandidate;
+        }
+    } catch (e) { /* ignore detection failures and keep default gameType */ }
 
     // Build optional query string
     let qs = '';

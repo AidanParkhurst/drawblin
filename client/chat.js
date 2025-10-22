@@ -93,9 +93,12 @@ class Chat {
         container.id = 'chat';
         container.style.width = `${width}px`;
         container.style.height = `${height}px`;
+        // Mobile-aware placeholder text
+        const isMobileLike = (typeof navigator !== 'undefined' && (/android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i).test(navigator.userAgent)) || (window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+        const placeholder = isMobileLike ? 'Tap here to chat' : 'Press Enter or Click Here to Chat';
         container.innerHTML = `
             <div class="chat__messages" aria-live="polite" aria-label="Chat messages"></div>
-            <input class="chat__input" type="text" placeholder="Press Enter or Click Here to Chat" maxlength="240" aria-label="Type a message" />
+            <input class="chat__input" type="text" placeholder="${placeholder}" maxlength="240" aria-label="Type a message" />
         `;
         document.body.appendChild(container);
 
