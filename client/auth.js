@@ -165,8 +165,11 @@ async function bindLoginButton() {
       if (!isInteractive(e) && e.cancelable) e.preventDefault(); 
     };
     const stopOnly = (e) => { e.stopPropagation(); };
-    // Block down/move that could start drawing; allow click/keyup to reach internal handlers
-    ['pointerdown','pointermove','mousedown','mousemove','touchstart','touchmove','wheel','dragstart']
+    // Block presses and touch starts that could begin drawing, but allow
+    // pointer/mouse move events so the in-game cursor can follow the mouse
+    // even while the account menu is open. We continue to block touchmove to
+    // prevent page scrolling when interacting with the menu.
+    ['pointerdown','mousedown','touchstart','touchmove','wheel','dragstart']
       .forEach((t) => el.addEventListener(t, cancel, { passive: false }));
     // Optionally stop bubbling of mouseup/touchend without canceling default
     ['pointerup','mouseup','touchend']
@@ -180,7 +183,7 @@ async function bindLoginButton() {
     // on pointerdown/touchstart — preventing default can stop the subsequent click event on mobile.
     const cancel = (e) => { e.stopPropagation(); };
     const stopOnly = (e) => { e.stopPropagation(); };
-    ['pointerdown','pointermove','mousedown','mousemove','touchstart','touchmove','wheel','dragstart']
+    ['pointerdown','mousedown','touchstart','touchmove','wheel','dragstart']
       .forEach((t) => btn.addEventListener(t, cancel, { passive: false }));
     ['pointerup','mouseup','touchend']
       .forEach((t) => btn.addEventListener(t, stopOnly));

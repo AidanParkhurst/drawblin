@@ -391,6 +391,10 @@ function findOrCreateLobby(lobbyType = 'freedraw') {
         case 'quick draw mobile':
             newLobby = new QuickDrawMobileLobby(nextLobbyId++);
             break;
+        case 'freedraw_mobile':
+        case 'free draw mobile':
+            newLobby = new FreeDrawMobileLobby(nextLobbyId++);
+            break;
         case 'guessinggame_mobile':
         case 'guessing game mobile':
             newLobby = new GuessingGameMobileLobby(nextLobbyId++);

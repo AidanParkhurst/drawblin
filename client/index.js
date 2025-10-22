@@ -519,6 +519,8 @@ async function start() {
             if (!btn || !menu) return;
             if (joined) {
                 btn.textContent = 'Connected!';
+                // Mark the button as connected so we can hide it on mobile via CSS
+                try { btn.classList.add('connected'); } catch (e) { /* ignore */ }
                 // Menu becomes a single red Leave action (re-using account-menu__action styles)
                 menu.innerHTML = `
                     <button class="play-menu__item account-menu__action account-menu__action--danger" data-action="leave">Leave</button>
@@ -529,6 +531,7 @@ async function start() {
                 try { btn.classList.remove('play-bottom'); } catch (e) {}
             } else {
                 btn.textContent = 'Play online';
+                try { btn.classList.remove('connected'); } catch (e) { /* ignore */ }
                 menu.innerHTML = `
                     <a class="play-menu__item" data-mode="freedraw">Free Draw</a>
                     <a class="play-menu__item" data-mode="quickdraw">Team Draw</a>
@@ -562,7 +565,11 @@ async function start() {
             };
             const cancel = (e) => { e.stopPropagation(); if (!isInteractive(e) && e.cancelable) e.preventDefault(); };
             const stopOnly = (e) => { e.stopPropagation(); };
-            ['pointerdown','pointermove','mousedown','mousemove','touchstart','touchmove','wheel','dragstart']
+            // Block presses and touch beginnings, but allow pointer/mouse move
+            // events through so the in-game cursor can continue following the
+            // mouse. We still block touchmove to prevent page scrolling when
+            // interacting with the menu on touch devices.
+            ['pointerdown','mousedown','touchstart','touchmove','wheel','dragstart']
                 .forEach((t) => el.addEventListener(t, cancel, { passive: false }));
             ['pointerup','mouseup','touchend']
                 .forEach((t) => el.addEventListener(t, stopOnly));
@@ -575,7 +582,9 @@ async function start() {
     // — calling preventDefault on touch/pointerdown suppresses subsequent click events on mobile.
     const cancelBtn = (e) => { e.stopPropagation(); };
         const stopOnlyBtn = (e) => { e.stopPropagation(); };
-        ['pointerdown','pointermove','mousedown','mousemove','touchstart','touchmove','wheel','dragstart']
+        // For the button: still prevent pointerdown/clicks from reaching the canvas,
+        // but allow pointermove/mousemove so the cursor can update visually.
+        ['pointerdown','mousedown','touchstart','touchmove','wheel','dragstart']
             .forEach((t) => btn.addEventListener(t, cancelBtn, { passive: false }));
         ['pointerup','mouseup','touchend']
             .forEach((t) => btn.addEventListener(t, stopOnlyBtn));
@@ -800,6 +809,23 @@ window.windowResized = () => {
 window.draw = () => {
     background(240);
     cursor(ARROW); // Set default cursor at the beginning of each frame
+    // If the local player exists, show a grab cursor when hovering their goblin
+    // and a grabbing cursor while they are actively moving it. This gives a
+    // visual affordance for drag-to-move on desktop.
+    try {
+        if (you) {
+            // compute a tolerant hit radius similar to mousePressed logic
+            const hitRadius = Math.max(you.size, 40) * 0.6;
+            const over = (typeof mouseX === 'number' && typeof mouseY === 'number') && (dist(mouseX, mouseY, you.x, you.y) <= hitRadius);
+            if (you._mobileMoveActive) {
+                // While in move mode, show grabbed hand
+                try { cursor('grabbing'); } catch (e) { cursor('move'); }
+            } else if (over) {
+                // Hovering over the goblin: show open hand
+                try { cursor('grab'); } catch (e) { cursor('pointer'); }
+            }
+        }
+    } catch (e) { /* ignore cursor errors */ }
     // Reset per-frame render flags for all goblins
     for (let g of goblins) { if (g && typeof g.beginFrame === 'function') g.beginFrame(); }
     
@@ -1145,17 +1171,19 @@ window.mousePressed = () => {
         return; // Don't start drawing if interacting with UI
     }
 
-    // Mobile: tap on your goblin to enter 'move' mode instead of drawing
-    if (__isMobile && you) {
+    // Tap or click on your goblin to enter 'move' mode instead of drawing.
+    // Previously this was mobile-only; allow desktop players the same behavior
+    // so they can click-and-drag their goblin.
+    if (you) {
         const d = dist(mouseX, mouseY, you.x, you.y);
         const hitRadius = Math.max(you.size, 40) * 0.6; // tolerant hit area
         if (d <= hitRadius) {
-            // Enter mobile move
+            // Enter move mode (works for both mobile and desktop)
             if (!you._mobileMoveActive) {
                 you._mobileMoveActive = true;
                 you._prevToolBeforeMobileMove = you.tool;
                 you.tool = 'move';
-                // Snap cursor to the goblin immediately so it can lead when the finger moves
+                // Snap cursor to the goblin immediately so it can lead when the pointer moves
                 you.cursor.x = you.x;
                 you.cursor.y = you.y;
                 // Freeze drawing state if any
@@ -1204,8 +1232,8 @@ window.mousePressed = () => {
 }
 
 window.mouseReleased = () => {
-    // If mobile move was active for our local goblin, end it and restore tool
-    if (__isMobile && you && you._mobileMoveActive) {
+    // If move mode was active for our local goblin, end it and restore tool
+    if (you && you._mobileMoveActive) {
         you._mobileMoveActive = false;
         if (you._prevToolBeforeMobileMove) {
             you.tool = you._prevToolBeforeMobileMove;

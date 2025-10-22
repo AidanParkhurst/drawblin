@@ -16,7 +16,18 @@ class Goblin {
         this.name = name || '';
 
         this.cursor = createVector(x, y); // Create a cursor for the goblin
-        this.cursor_range = 200; // Range within which the cursor can move
+        // Range within which the cursor can move. Make it slightly larger on desktop
+        // so PC users have a touch-bigger drawing radius while mobile keeps the
+        // original conservative size.
+        const _isMobile = (function(){
+            try {
+                const ua = (navigator.userAgent || navigator.vendor || window.opera || '').toLowerCase();
+                const uaHit = /(android|iphone|ipad|ipod|blackberry|iemobile|opera mini)/i.test(ua);
+                const coarse = (window.matchMedia && matchMedia('(pointer:coarse)').matches) || (navigator.maxTouchPoints || 0) > 1;
+                return !!(uaHit || coarse);
+            } catch (e) { return false; }
+        })();
+        this.cursor_range = _isMobile ? 200 : 230; // desktop gets +30px radius
         this.cursor_vector = createVector(0, 0); // Vector to track cursor position relative to the goblin
         this.lines = []; // Array to store lines drawn by the goblin
     this.simplify_timer = 0; // Timer for simplifying lines

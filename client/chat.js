@@ -177,6 +177,77 @@ class Chat {
         if (!this.inputEl) return;
         this.inputEl.blur();
         if (you) you.frozen = false;
+        // On mobile, when the input loses focus we should return focus to the
+        // canvas so users can immediately resume drawing without an extra tap.
+        // Use a short timeout to allow the virtual keyboard to dismiss first.
+        try {
+            setTimeout(() => {
+                const cv = document.getElementById('drawblin-canvas');
+                        if (cv) {
+                    try { cv.focus && cv.focus(); } catch (e) {}
+                    // On many mobile browsers focusing isn't enough to restore
+                    // pointer/touch handling. Dispatch a synthetic pointerdown+
+                    // pointerup at the canvas center to wake up input. We set a
+                    // global suppression flag so the synthetic won't begin a
+                    // real drawing stroke.
+                    try {
+                        if (typeof window.__isMobile !== 'undefined' && window.__isMobile) {
+                            try { window.__suppressSyntheticWake = true; } catch (e) {}
+                            const rect = cv.getBoundingClientRect();
+                            const cx = rect.left + rect.width / 2;
+                            const cy = rect.top + rect.height / 2;
+                            const init = { bubbles: true, cancelable: true, composed: true, pointerId: 1, clientX: cx, clientY: cy };
+                            const down = new PointerEvent('pointerdown', init);
+                            const up = new PointerEvent('pointerup', init);
+                            cv.dispatchEvent(down);
+                            cv.dispatchEvent(up);
+                            // If we're on iOS Safari (or other picky browsers) and the
+                            // synthetic focus didn't restore interaction, show a tiny
+                            // hint so the user can tap once to resume drawing.
+                            try {
+                                const ua = (navigator.userAgent || '').toLowerCase();
+                                const isiOS = /iphone|ipad|ipod/.test(ua);
+                                const isSafari = /safari/.test(ua) && !/crios|fxios|edgios/.test(ua);
+                                if (isiOS && isSafari) {
+                                    this.#showResumeHint();
+                                }
+                            } catch (e) {}
+                        }
+                    } catch (e) { /* ignore synthetic dispatch failures */ }
+                }
+            }, 120);
+        } catch (e) { /* ignore */ }
+    }
+
+    // Show a small transient hint for iOS Safari users to tap to resume drawing
+    #showResumeHint() {
+        try {
+            // Do nothing if already present
+            if (document.getElementById('chat-resume-hint')) return;
+            const hint = document.createElement('div');
+            hint.id = 'chat-resume-hint';
+            hint.textContent = 'Tap to continue drawing';
+            hint.style.position = 'fixed';
+            hint.style.left = '50%';
+            hint.style.top = '50%';
+            hint.style.transform = 'translate(-50%, -50%)';
+            hint.style.zIndex = '10001';
+            hint.style.padding = '8px 12px';
+            hint.style.borderRadius = '8px';
+            hint.style.background = 'rgba(0,0,0,0.75)';
+            hint.style.color = '#fff';
+            hint.style.fontFamily = 'Neucha, sans-serif';
+            hint.style.fontSize = '16px';
+            hint.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+            hint.style.cursor = 'pointer';
+            hint.addEventListener('click', () => {
+                try { const cv = document.getElementById('drawblin-canvas'); if (cv && typeof cv.focus === 'function') cv.focus(); } catch (e) {}
+                hint.remove();
+            });
+            document.body.appendChild(hint);
+            // Auto-remove after 4s
+            setTimeout(() => { try { hint.remove(); } catch (e) {} }, 4000);
+        } catch (e) { /* ignore */ }
     }
 
     #renderMessage(user, content) {

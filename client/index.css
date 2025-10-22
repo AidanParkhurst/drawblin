@@ -355,18 +355,26 @@ body.house-mode #play-menu {
 
 /* Mobile / narrow-screen adjustments */
 @media (max-width: 720px) {
-    /* Make chat compact and centered, smaller fonts */
+    /* On mobile, position the chat input in the top-left. The chat
+       messages list is hidden so the input is the only visible element. */
     #chat {
-        bottom: 8px;
+        /* place at top-left instead of bottom-center */
+        top: 8px;
+        left: 8px;
+        bottom: auto;
+        transform: none;
         padding: 6px;
         border-radius: 10px;
-        width: calc(100% - 24px);
+        /* keep reasonable maximum but let the inline JS width value take precedence */
         max-width: 560px;
-        left: 50%;
-        transform: translateX(-50%);
         font-size: 14px;
     }
-    #chat .chat__messages { max-height: 120px; }
+    /* Hide the message history on mobile to save space; leave the input visible */
+    #chat .chat__messages { display: none; }
+
+     /* When the client is connected, the Play button shows "Connected!".
+         On mobile we hide that button because the chat input occupies top-left. */
+     #play-button.connected { display: none !important; }
     #chat .chat__message { font-size: 14px; line-height: 1.1; }
     #chat .chat__input { font-size: 14px; padding: 6px 8px; }
     /* Keep transform origin for animations */
