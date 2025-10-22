@@ -195,8 +195,18 @@ function decodeLinesCompact(b64, ownerColor) {
         const flags = bytes[i++];
         const hasColor = (flags & 1) !== 0;
         const hasWeight = (flags & 2) !== 0;
-        if (hasColor) { curColor = [bytes[i++]|0, bytes[i++]|0, bytes[i++]|0]; }
-        if (hasWeight) { curWeight = bytes[i++]|0; }
+        if (hasColor) {
+            curColor = [bytes[i++]|0, bytes[i++]|0, bytes[i++]|0];
+        } else {
+            // No color emitted for this group: revert to the owner's base color
+            curColor = Array.isArray(ownerColor) ? ownerColor.slice(0,3) : [0,0,0];
+        }
+        if (hasWeight) {
+            curWeight = bytes[i++]|0;
+        } else {
+            // No weight emitted: use the default weight
+            curWeight = DEFAULT_WEIGHT;
+        }
         // One or more count blocks can follow for this style. We stop when next byte looks like a flags start (heuristic is hard),
         // so we instead read exactly one block per style emission as encoded above. Our encoder repeats flags per style chunk, so read one block here.
         const count = bytes[i++]|0;
