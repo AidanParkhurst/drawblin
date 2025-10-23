@@ -271,15 +271,18 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ 
     server,
     verifyClient: (info) => {
-        // Parse the URL to get the path
-        const pathname = url.parse(info.req.url).pathname;
+        // Parse the URL to get the path and normalize it
+        let pathname = url.parse(info.req.url).pathname || '';
+        // Normalize: trim trailing slashes and lowercase for robust matching
+        pathname = pathname.replace(/\/+$/, '').toLowerCase();
+        if (!pathname) pathname = '/';
         const validPaths = ['/freedraw', '/quickdraw', '/guessinggame', '/house', '/freedraw_mobile', '/quickdraw_mobile', '/guessinggame_mobile'];
-        
+
         if (!validPaths.includes(pathname)) {
             console.warn(`Rejected connection to invalid path: ${pathname}`);
             return false;
         }
-        
+
         return true;
     }
 });
@@ -413,7 +416,8 @@ function findOrCreateLobby(lobbyType = 'freedraw') {
 wss.on('connection', (socket, request) => {
     // Parse the URL to determine lobby type
     const parsed = url.parse(request.url, true);
-    const pathname = parsed.pathname;
+    let pathname = parsed.pathname || '';
+    pathname = pathname.replace(/\/+$/, '').toLowerCase();
     let lobbyType;
     
     switch (pathname) {
