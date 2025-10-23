@@ -4,7 +4,6 @@ User-agent: *
 Allow: /
 
 # Disallow low-value or private pages
-Disallow: /login
 Disallow: /account
 
 # House lobbies are invite/owner-driven; don't index listings
