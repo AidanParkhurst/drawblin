@@ -1169,7 +1169,7 @@ function drawTitle() {
     }
     textSize(32);
     textStyle(BOLD);
-    text("Drawblins!", width / 2, height / 2);
+    text("Drawblin!", width / 2, height / 2);
     pop();
 }
 
