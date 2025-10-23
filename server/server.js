@@ -374,8 +374,11 @@ function shortUid(uid, len = 12) {
 function findOrCreateLobby(lobbyType = 'freedraw') {
     // Find first non-full lobby of the specified type
     for (const lobby of lobbies.values()) {
-        if (!lobby.isFull() && lobby.constructor.name.toLowerCase().includes(lobbyType.replace(/\s+/g, ''))) {
-            return lobby;
+        if (!lobby.isFull()) {
+            // Normalize strings: remove non-alphanumeric chars so 'freedraw_mobile' matches 'FreeDrawMobileLobby'
+            const normCtor = (lobby.constructor.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const normWant = (lobbyType || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (normCtor.includes(normWant)) return lobby;
         }
     }
     
