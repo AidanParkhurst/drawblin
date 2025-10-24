@@ -38,7 +38,9 @@ export function drawHeader(maskedPrompt, seconds, uiColor, options = {}) {
     const timerStr = showTimer ? ` (${seconds}s)` : '';
     push();
     textSize(24); textAlign(LEFT, CENTER);
-    const y = 50;
+    // Nudge header slightly lower on touch devices to avoid overlapping top UI
+    const isMobileLike = (typeof navigator !== 'undefined' && (/android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i).test(navigator.userAgent)) || (window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+    const y = isMobileLike ? 70 : 50;
     const spaceW = Math.max(textWidth(' '), textWidth('_'));
     // Add a small gap after each underscore so underscores don't visually merge
     const underscoreW = textWidth('_');

@@ -392,3 +392,20 @@ body.house-mode #play-menu {
     /* House controls slightly smaller */
     #house-controls { left: 8px; top: 8px; width: 140px; }
 }
+
+/* Prevent long-press/highlight behavior on touch devices that shows selection
+   or a tap highlight (notably iOS). Keep inputs selectable. */
+html, body, canvas, #chat, #play-button, #login-button, #play-menu, #account-menu {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none; /* disables the callout on iOS */
+    -webkit-tap-highlight-color: transparent; /* remove tap flash */
+}
+
+/* Allow selecting and interacting with actual form inputs as normal */
+input, textarea, .chat__input, .account-menu__input {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: initial;
+    -webkit-tap-highlight-color: initial;
+}

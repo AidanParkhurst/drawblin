@@ -20,6 +20,10 @@ class Toolbelt {
             }
         } catch (e) {}
         this.hoveredTool = -1; // Index of currently hovered tool
+    // Track mouse press state so we only switch tools when the press
+    // originates on a tool (prevents switching while dragging across tools)
+    this._prevMousePressed = false;
+    this._pressedToolIndex = -1;
         
         // Position at bottom right
         this.updatePosition();
@@ -38,6 +42,8 @@ class Toolbelt {
         // Check for mouse interactions
         this.hoveredTool = -1;
         let cursorSet = false;
+        const isNewPress = (typeof mouseIsPressed !== 'undefined') ? (mouseIsPressed && !this._prevMousePressed) : false;
+        const isRelease = (typeof mouseIsPressed !== 'undefined') ? (!mouseIsPressed && this._prevMousePressed) : false;
         
         for (let i = 0; i < this.tools.length; i++) {
             const toolX = this.x + (i * (this.toolSize + this.spacing));
@@ -50,14 +56,22 @@ class Toolbelt {
                 cursor('pointer');
                 cursorSet = true;
                 
-                // Handle tool selection on click
-                if (mouseIsPressed) {
+                // Handle tool selection only when the press starts on this tool.
+                // This prevents switching tools while dragging across them.
+                if (isNewPress) {
+                    this._pressedToolIndex = i;
                     you.tool = this.tools[i];
                 }
                 break;
             }
         }
-        
+        // If the mouse/touch was released, clear the pressed origin
+        if (isRelease) {
+            this._pressedToolIndex = -1;
+        }
+
+        this._prevMousePressed = (typeof mouseIsPressed !== 'undefined') ? mouseIsPressed : false;
+
         this.display();
     }
     
@@ -70,7 +84,7 @@ class Toolbelt {
             const toolY = this.y;
             
             // Draw tool background with dotted border (same style as other UI)
-            fill(240); // Light gray background
+            fill(240,0); // Light gray background
             // Even shorter dashes and larger gaps for a lighter appearance
             drawingContext.setLineDash([6, 10]); // shorter dash (6px) with larger gap (10px)
             stroke(you.ui_color[0], you.ui_color[1], you.ui_color[2], 100);
