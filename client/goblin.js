@@ -44,6 +44,29 @@ class Goblin {
         this.input = createVector(0, 0); // Input vector for movement
         this.frozen = false;
 
+    // Remote interpolation targets (for non-local goblins)
+    // These are set by the networking layer instead of snapping x/y directly.
+    this.targetX = this.x;
+    this.targetY = this.y;
+    this.targetCursor = this.cursor.copy();
+    // Time-based interpolation fields (ms timestamps via performance.now())
+    this.netStartX = this.x;
+    this.netStartY = this.y;
+    this.netEndX = this.x;
+    this.netEndY = this.y;
+    this.netStartTime = 0;
+    this.netEndTime = 0;
+    this.netInterpDuration = 400; // default 400ms walk-like duration
+    // How quickly remote goblins interpolate toward server positions (0..1)
+    // Slightly increased for more responsive tracking.
+    // Base interpolation fraction for remote goblins. Lower = smoother/laggier.
+    // Base interpolation fraction for remote goblins. Lower = smoother/laggier.
+    // Set low so remote goblins appear to walk rather than snap or run.
+    this.remoteLerp = 0.10; // intentionally low for walking-like motion
+    // Maximum lerp fraction applied adaptively for very large deltas (strictly < 1 to avoid snapping)
+    // Lower cap to make even large gaps close at walking/fast-walk speed rather than instant.
+    this.remoteMaxLerp = 0.45; // stricter cap for more gradual movement
+
         // Tool system
         this.tool = 'brush'; // Current tool being used
 
@@ -238,6 +261,52 @@ class Goblin {
             this.cursor_vector.setMag(this.cursor_range);
             this.cursor.x = this.x + this.cursor_vector.x;
             this.cursor.y = this.y + this.cursor_vector.y;
+        }
+
+        // Remote goblin: smoothly interpolate towards network-provided targets
+        if (!this.local) {
+            try {
+                // Time-based interpolation towards netEndX/Y over netStartTime..netEndTime
+                const prevX = this.x;
+                const prevY = this.y;
+                const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+                if (this.netEndTime > this.netStartTime) {
+                    const t = Math.min(1, Math.max(0, (now - this.netStartTime) / Math.max(1, (this.netEndTime - this.netStartTime))));
+                    this.x = lerp(this.netStartX, this.netEndX, t);
+                    this.y = lerp(this.netStartY, this.netEndY, t);
+                    // Velocity used for walk-cycle animation
+                    this.velocity.x = this.x - prevX;
+                    this.velocity.y = this.y - prevY;
+                    if (window.__netDebug) {
+                        try {
+                            const remaining = Math.hypot(this.netEndX - this.x, this.netEndY - this.y);
+                            if (remaining > 4 || t > 0.2) {
+                                console.log(`[net-debug] goblin ${this.id} interp t=${t.toFixed(3)} rem=${remaining.toFixed(1)} pos=(${this.x.toFixed(1)},${this.y.toFixed(1)}) target=(${(this.netEndX||0).toFixed(1)},${(this.netEndY||0).toFixed(1)})`);
+                            }
+                        } catch (e) {}
+                    }
+                } else {
+                    // No valid interpolation window: fall back to gentle lerp to targetX/targetY
+                    const dx = (this.targetX || this.x) - this.x;
+                    const dy = (this.targetY || this.y) - this.y;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    if (dist < 0.5) {
+                        this.velocity.x = 0;
+                        this.velocity.y = 0;
+                    }
+                    const extra = Math.min(0.4, dist / 240);
+                    const amt = Math.min(this.remoteMaxLerp, this.remoteLerp + extra);
+                    this.x = lerp(this.x, this.targetX || this.x, amt);
+                    this.y = lerp(this.y, this.targetY || this.y, amt);
+                    this.velocity.x = this.x - prevX;
+                    this.velocity.y = this.y - prevY;
+                }
+                // Smooth the cursor toward the remote cursor target as well
+                if (this.targetCursor && this.targetCursor.x != null) {
+                    this.cursor.x = lerp(this.cursor.x, this.targetCursor.x, 0.22);
+                    this.cursor.y = lerp(this.cursor.y, this.targetCursor.y, 0.22);
+                }
+            } catch (e) { /* non-fatal; keep existing position */ }
         }
 
         // Handle speech timer lifecycle (rendering happens in render pass)
@@ -463,6 +532,8 @@ class Goblin {
     }
     
     display_range() {
+        // Only show the cursor range for the local goblin
+        if (!this.local) return;
         // Dotted line circle around the goblin (cursor range)
         push();
         drawingContext.setLineDash([40, 20]); // Set dashed line style

@@ -1464,12 +1464,25 @@ function onmessage(event) {
                 goblin = newcomer;
             }
             if (goblin) {
-                goblin.x = payload.x;
-                goblin.y = payload.y;
+                // For remote goblins, set a time-based interpolation window instead of snapping
+                const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+                const dur = (typeof goblin.netInterpDuration === 'number') ? goblin.netInterpDuration : 400;
+                goblin.netStartX = goblin.x;
+                goblin.netStartY = goblin.y;
+                goblin.netEndX = (typeof payload.x === 'number') ? payload.x : goblin.netEndX;
+                goblin.netEndY = (typeof payload.y === 'number') ? payload.y : goblin.netEndY;
+                goblin.netStartTime = now;
+                goblin.netEndTime = now + dur;
+                // Keep targetX/Y as a fallback for older code paths
+                goblin.targetX = (typeof payload.x === 'number') ? payload.x : goblin.targetX;
+                goblin.targetY = (typeof payload.y === 'number') ? payload.y : goblin.targetY;
+                if (window.__netDebug) {
+                    try { console.log(`[net] update->interp for ${goblin.id}: start=(${goblin.netStartX.toFixed(1)},${goblin.netStartY.toFixed(1)}) end=(${goblin.netEndX.toFixed(1)},${goblin.netEndY.toFixed(1)}) dur=${dur}ms`); } catch (e) {}
+                }
                 if (payload.cursor && Array.isArray(payload.cursor._values)) {
-                    goblin.cursor = createVector(payload.cursor._values[0], payload.cursor._values[1]);
+                    goblin.targetCursor = createVector(payload.cursor._values[0], payload.cursor._values[1]);
                 } else if (payload.cursor && typeof payload.cursor.x === 'number' && typeof payload.cursor.y === 'number') {
-                    goblin.cursor = createVector(payload.cursor.x, payload.cursor.y);
+                    goblin.targetCursor = createVector(payload.cursor.x, payload.cursor.y);
                 }
                 goblin.color = (Array.isArray(payload.color) && payload.color.length===3) ? payload.color : goblin.color;
                 if (Array.isArray(payload.ui_color)) goblin.ui_color = payload.ui_color; else if (Array.isArray(payload.ui)) goblin.ui_color = payload.ui;
