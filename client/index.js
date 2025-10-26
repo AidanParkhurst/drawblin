@@ -1154,22 +1154,56 @@ function guessinggame_update(delta) {
 
 function drawTitle() {
     push();
-    translate(0, -100);
+    // On mobile, place the intro text at the same approximate Y as the header
+    // (header draws at y ~= 70 for touch/coarse pointers). On desktop keep the
+    // original centered / slightly raised placement.
+    const isMobileLike = (typeof __isMobile !== 'undefined' && __isMobile)
+        || (typeof navigator !== 'undefined' && (/android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i).test(navigator.userAgent))
+        || (window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+
+    let baseY;
+    if (isMobileLike) {
+        // Match header.js's mobile y (70) so the intro sits at the same level as the header
+        baseY = 70;
+        translate(0, 0);
+    } else {
+        // Keep previous offset for desktop so title stays visually centered
+        translate(0, -100);
+        baseY = height / 2;
+    }
+
     textAlign(CENTER);
     fill(you.ui_color[0], you.ui_color[1], you.ui_color[2]);
-    textSize(16);
-    // Mobile-friendly instruction text
+    // Mobile: title at header Y, hint beneath it. Desktop: original centered placement.
     try {
-        const hint = (typeof __isMobile !== 'undefined' && __isMobile)
+        const hint = isMobileLike
             ? 'Drag your goblin to move. Draw within the range'
             : 'Click to Draw, WASD or Arrows to Move';
-        text(hint, width / 2, height / 2 + 50);
+        if (isMobileLike) {
+            // Title first at header Y
+            textSize(32);
+            textStyle(BOLD);
+            text("Drawblin!", width / 2, baseY);
+            // Hint below the title
+            textSize(16);
+            textStyle(NORMAL);
+            text(hint, width / 2, baseY + 18);
+        } else {
+            // Desktop: keep previous centered/raised layout
+            textSize(16);
+            text(hint, width / 2, baseY + 50);
+            textSize(32);
+            textStyle(BOLD);
+            text("Drawblin!", width / 2, baseY);
+        }
     } catch (e) {
-        text('Click to Draw, WASD or Arrows to Move', width / 2, height / 2 + 50);
+        // Fallback: desktop-like placement
+        textSize(16);
+        text('Click to Draw, WASD or Arrows to Move', width / 2, baseY + 50);
+        textSize(32);
+        textStyle(BOLD);
+        text("Drawblin!", width / 2, baseY);
     }
-    textSize(32);
-    textStyle(BOLD);
-    text("Drawblin!", width / 2, height / 2);
     pop();
 }
 
