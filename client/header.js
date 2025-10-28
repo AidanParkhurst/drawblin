@@ -103,16 +103,19 @@ export function drawHeader(maskedPrompt, seconds, uiColor, options = {}) {
 export function drawScoreboard(results, goblins, ui_color){
     const sorted = [...results].sort((a,b)=> b.score - a.score);
     push();
+    // Shrink scoreboard on mobile to avoid overwhelming the small screen
+    const isMobileLike = (typeof navigator !== 'undefined' && (/android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i).test(navigator.userAgent)) || (window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+    const scale = isMobileLike ? 0.72 : 1.0;
     textAlign(CENTER, TOP);
-    textSize(40); textStyle(BOLD);
+    textSize(Math.max(18, Math.round(40 * scale))); textStyle(BOLD);
     fill(ui_color[0], ui_color[1], ui_color[2]);
     textStyle(NORMAL);
-    let yStart = 70, lineH = 44, rank=1;
+    let yStart = Math.max(48, Math.round(70 * scale)), lineH = Math.max(20, Math.round(44 * scale)), rank=1;
     for (const r of sorted){
         const artist = goblins.find(g=> g.id === r.userId);
         if (!artist) continue;
         fill(artist.ui_color[0], artist.ui_color[1], artist.ui_color[2]);
-        textSize(32);
+        textSize(Math.max(14, Math.round(32 * scale)));
         text(`${rank}. ${artist.name}  -  ${r.score}`, windowWidth/2, yStart + (rank-1)*lineH);
         rank++;
     }
@@ -121,10 +124,13 @@ export function drawScoreboard(results, goblins, ui_color){
 
 export function drawWaitingWithScoreboard(timer, results, goblins, ui_color) {
     const sorted = [...results].sort((a,b)=> b.score - a.score);
-    const lineH = 40;
-    const titleSize = 22;
-    const entrySize = 30;
-    const gapBelowTitle = 14;
+    // Reduce sizes on touch/mobile devices so the scoreboard fits comfortably
+    const isMobileLike = (typeof navigator !== 'undefined' && (/android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i).test(navigator.userAgent)) || (window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+    const scale = isMobileLike ? 0.72 : 1.0;
+    const lineH = Math.max(20, Math.round(40 * scale));
+    const titleSize = Math.max(12, Math.round(22 * scale));
+    const entrySize = Math.max(14, Math.round(30 * scale));
+    const gapBelowTitle = Math.max(8, Math.round(14 * scale));
     const num = sorted.length;
 
     // Build line strings for measurement
@@ -144,16 +150,18 @@ export function drawWaitingWithScoreboard(timer, results, goblins, ui_color) {
     pop();
 
     const totalHeight = titleSize + gapBelowTitle + (num * lineH);
-    const topPadding = 120;
+    const topPadding = isMobileLike ? 80 : 120;
     const topY = Math.max(topPadding, (height - totalHeight)/2);
     const blockX = width/2 - maxWidth/2; // centered block, left-aligned text
 
     // Timer centered
     push();
     textAlign(CENTER, CENTER);
-    textSize(22);
+    textSize(Math.max(12, Math.round(22 * scale)));
     fill(ui_color[0], ui_color[1], ui_color[2]);
-    text(`Starting in ${int(timer)}s`, width/2, 50);
+    // Place the countdown near the header Y (match drawHeader's y: 70 on mobile, 50 on desktop)
+    const timerY = isMobileLike ? 70 : 50;
+    text(`Starting in ${int(timer)}s`, width/2, timerY);
     pop();
 
     // Draw scoreboard block
