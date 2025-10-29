@@ -143,21 +143,19 @@ async function openModal(deal) {
     includes.textContent = deal.includes || 'This purchase grants permanent access to all items shown in this pack for your account.';
     cta.appendChild(includes);
 
-    const btn = document.createElement('button');
-    // If not signed in, prompt sign in instead of buy
-    let authed = false;
-    try { if (isAuthConfigured()) { await authReady(); authed = !!getUser(); } } catch {}
-    if (!authed) {
-      btn.id = 'modal-signin';
-      btn.className = 'btn-buy';
-      btn.textContent = 'Sign in before purchasing';
-      btn.onclick = () => {
-        // navigate to login preserving base path
-        const basePath = window.location.pathname.replace(/\/[^/]*$/, '/');
-        const url = `${window.location.origin}${basePath}login`;
-        window.location.assign(url);
-      };
-    } else {
+      // If not signed in, prompt sign in instead of buy
+      let authed = false;
+      try { if (isAuthConfigured()) { await authReady(); authed = !!getUser(); } } catch {}
+      if (!authed) {
+        // Render a link styled like the buy button that navigates to /login
+        const link = document.createElement('a');
+        link.id = 'modal-signin';
+        link.className = 'btn-buy';
+        link.textContent = 'Sign in or Create account';
+        // Direct to absolute /login path so authors can use it from any page
+        link.href = '/login';
+        cta.appendChild(link);
+      } else {
       // If a checkout link is provided, render an anchor as the buy button
       if (deal && typeof deal.href === 'string' && deal.href.trim().length > 0) {
         const link = document.createElement('a');
@@ -170,6 +168,7 @@ async function openModal(deal) {
         cta.appendChild(link);
       } else {
         // Fallback: keep disabled placeholder button if href not yet provided
+        const btn = document.createElement('button');
         btn.id = 'modal-buy';
         btn.className = 'btn-buy';
         btn.textContent = 'Buy!';

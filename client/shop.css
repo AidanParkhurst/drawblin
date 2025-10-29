@@ -177,8 +177,8 @@
 .modal { position: fixed; inset: 0; z-index: 1100; }
 .modal__backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.35); }
 .modal__dialog {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  width: min(1000px, 92vw); max-height: 90vh; overflow: hidden;
+  position: absolute; left: 50%; top: 5vh; transform: translateX(-50%);
+  width: min(1000px, 92vw); max-height: 90vh; overflow: auto; overflow-x: hidden;
   background: rgba(240,240,240,1);
   border-radius: 14px; box-shadow: 0 10px 40px rgba(0,0,0,0.25);
   border: 3px dashed var(--ink-faint);
@@ -195,8 +195,11 @@
 
 @media (max-width: 820px) { .modal__content { grid-template-columns: 1fr; } }
 
-.modal__left { padding: 12px; }
+.modal__left { padding: 12px; overflow: visible; }
 .modal__right { padding: 16px 16px 20px 6px; display: flex; flex-direction: column; }
+/* Prevent flex children from forcing a minimum width that can grow the modal
+  (helps when images or many thumbnails would otherwise expand the container). */
+.modal__content > * { min-width: 0; }
 .modal__title { margin: 6px 0 6px 0; font-size: 28px; color: var(--ink); }
 .modal__desc { margin: 0 0 16px 0; font-size: 18px; color: var(--ink-soft); }
 .modal__desc { white-space: pre-line; }
@@ -219,9 +222,54 @@
 .btn-buy:disabled { opacity: 0.7; cursor: not-allowed; }
 
 /* Carousel */
-.carousel { position: relative; border-radius: 10px; overflow: hidden; }
-.carousel__viewport { background: rgb(240); display: grid; place-items: center; aspect-ratio: 4/3; }
-.carousel__image { max-width: 100%; max-height: 100%; object-fit: contain; }
+.carousel { position: relative; border-radius: 10px; overflow: visible; width: 100%; max-width: 100%; box-sizing: border-box; }
+.carousel__viewport { background: rgb(240); display: grid; place-items: center; aspect-ratio: 4/3; width: 100%; box-sizing: border-box; }
+.carousel__image { width: 100%; height: auto; max-width: 100%; max-height: 60vh; object-fit: contain; display: block; }
+
+/* Make sure large images don't leap out of the dialog -- cap their height */
+.carousel__viewport img, .carousel__image { max-height: 60vh; }
+
+/* Ensure nav buttons and close button render above images */
+.carousel__nav, .modal__close { z-index: 9999; }
+
+/* Allow the carousel to show nav controls even when the image edges are tight */
+.carousel { overflow: visible; }
+
+/* Prevent modal scroll from propagating to the page behind it on touch / wheel */
+.modal__dialog {
+  -webkit-overflow-scrolling: touch; /* smooth native scrolling on iOS */
+  overscroll-behavior: contain; /* prevent scrolling the body when at edges */
+}
+
+/* Ensure touch pan gestures are delivered to the dialog (vertical only) so the page
+   behind doesn't steal the scroll on mobile devices. */
+.modal__dialog { touch-action: pan-y; }
+
+@media (max-width: 620px) {
+  /* On small screens keep carousel nav visible and cap image height further */
+  .carousel { overflow: visible; }
+  .carousel__viewport { height: min(40vh, 56vw); }
+  .carousel__viewport img, .carousel__image { max-height: 40vh; }
+
+  /* Make thumbnails smaller on mobile so a long strip doesn't feel huge */
+  .carousel__thumb { width: 48px; height: 36px; }
+}
+
+/* On narrow screens move the CTA above the description so the primary action is immediately visible */
+@media (max-width: 820px) {
+  .modal__right { display: flex; flex-direction: column; }
+  .modal__title { order: 0; }
+  .modal__cta { order: 1; margin-top: 0; margin-bottom: 12px; }
+  .modal__desc { order: 2; }
+  .modal__includes { order: 3; }
+}
+
+/* Mobile-specific carousel constraints: limit height so the image doesn't dominate the popup
+   and so the modal can still show description/cta without overflowing permanently. */
+@media (max-width: 620px) {
+  .carousel__viewport { aspect-ratio: auto; height: min(40vh, 56vw); }
+  .carousel__image { max-height: 100%; width: auto; }
+}
 .carousel__nav {
   position: absolute; top: 50%; transform: translateY(-50%);
   width: 44px; height: 44px; border-radius: 10px; border: 3px dashed var(--ink-faint);
@@ -233,7 +281,7 @@
 .carousel__nav--prev { left: 8px; }
 .carousel__nav--next { right: 8px; }
 
-.carousel__thumbs { display: flex; gap: 8px; margin-top: 8px; overflow-x: auto; overflow-y: hidden}
+.carousel__thumbs { display: flex; gap: 8px; margin-top: 8px; overflow-x: auto; overflow-y: hidden; max-width: 100%; box-sizing: border-box; }
 .carousel__thumb {
   width: 64px; height: 48px; border-radius: 8px; border: 3px dashed var(--ink-faint);
   background: rgba(240,240,240,1); display: grid; place-items: center; cursor: pointer; flex: 0 0 auto; transition: 0.2s all;
