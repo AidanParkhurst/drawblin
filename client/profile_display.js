@@ -232,7 +232,9 @@ class ProfileDisplay {
                 if (pickerFlip) scale(-1, 1);
             image(bodySprite, 0, 0, tg.size, bodyHeight);
             // Draw bling on picker using the picker's selected bling (do not require tg.hasBling or mutate tg)
-            const blingToRender = this.selectedBling || tg.blingType;
+            // Only render bling if the bling picker is available to the user (don't show crown when picker is hidden)
+            const blingAllowed = (hasBlingPack() || hasPremium());
+            const blingToRender = blingAllowed ? (this.selectedBling || tg.blingType) : null;
             if (blingToRender && assets.sprites[blingToRender]) {
                 try {
                     const blingSprite = assets.sprites[blingToRender];
