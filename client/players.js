@@ -1,7 +1,6 @@
 import { you, goblins } from './index.js';
 import { assets } from './assets.js'; // Import assets for the player list
 import ProfileDisplay from './profile_display.js';
-import BasicProfileDisplay from './profile_display_basic.js';
 import { resolveBlingLayout, computeBlingWidth } from './bling_config.js';
 import { isAuthConfigured, getUser, ready as authReady } from './auth.js';
 import { spawnBurst } from './burst.js';
@@ -11,9 +10,8 @@ class PlayerList {
     constructor(circleSize = 50, spacing = 20) {
         this.circleSize = circleSize; // Size of each circle representing a player
         this.spacing = spacing; // Spacing between circles
-    // Decide which profile display to use (basic if unauthenticated, advanced if authenticated)
-    this.profileDisplay = new BasicProfileDisplay(); // default
-    this._useAdvanced = false;
+    // Single profile display instance that will render basic or extended UI based on entitlements
+    this.profileDisplay = new ProfileDisplay();
     this._initAuthGate();
     this.pointBursts = []; // { userId, points, age, duration }
     // Smooth hover scale for the local player's icon
@@ -32,7 +30,7 @@ class PlayerList {
                 }
             }
         } catch {}
-        this._maybeSwapProfileDisplay();
+    this._maybeSwapProfileDisplay();
         // Listen for auth changes; re-fetch entitlements and reevaluate
         window.addEventListener('auth:user-changed', async () => {
             try {
@@ -45,29 +43,13 @@ class PlayerList {
     }
 
     _maybeSwapProfileDisplay() {
-        const authed = isAuthConfigured() && !!getUser();
-        // Only use advanced profile if user has premium, pet pack, or bling pack
-        const hasAdvancedEntitlement = authed && (hasPremium() || hasPetPack() || hasBlingPack());
-        if (hasAdvancedEntitlement && !this._useAdvanced) {
-            // Swap to advanced
-            const prev = this.profileDisplay;
-            const adv = new ProfileDisplay();
-            // Transfer minimal state if panel open on self
-            if (prev && prev.visible) {
-                adv.show(prev.targetGoblin?.id || you.id, prev.playerX, prev.playerY);
+        // ProfileDisplay now handles both basic and extended UIs itself. Ensure it updates layout based on entitlements.
+        try {
+            if (this.profileDisplay && typeof this.profileDisplay._updateModeAndPosition === 'function') {
+                this.profileDisplay._updateModeAndPosition();
+                if (this.profileDisplay.visible) this.profileDisplay.updatePosition();
             }
-            this.profileDisplay = adv;
-            this._useAdvanced = true;
-        } else if ((!hasAdvancedEntitlement) && this._useAdvanced) {
-            // Swap to basic
-            const prev = this.profileDisplay;
-            const basic = new BasicProfileDisplay();
-            if (prev && prev.visible) {
-                basic.show(prev.targetGoblin?.id || you.id, prev.playerX, prev.playerY);
-            }
-            this.profileDisplay = basic;
-            this._useAdvanced = false;
-        }
+        } catch (e) { /* non-fatal */ }
     }
 
     update() {

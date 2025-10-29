@@ -457,9 +457,12 @@ class Goblin {
 
     // Render winner bling using anchor/spec system
     display_bling() {
-        const sprite = assets?.sprites?.[this.blingType];
+        // Only render when hasBling is true; prefer a locally-chosen bling if present
+        if (!this.hasBling) return;
+        const chosen = this._clientBlingChoice || this.blingType;
+        const sprite = assets?.sprites?.[chosen];
         if (!sprite) return;
-        const layout = resolveBlingLayout(this.shape, this.blingType);
+        const layout = resolveBlingLayout(this.shape, chosen);
         if (!layout) return;
         const { anchor, spec } = layout;
         const bodySprite = assets.sprites[this.shape];
@@ -473,7 +476,7 @@ class Goblin {
     if (spec.dx) baseX += spec.dx * bodyWidth;
     if (spec.dy) baseY += spec.dy * bodyHeight;
 
-    let targetWidth = Math.max(4, computeBlingWidth(this.shape, this.blingType, (spec.width || 0.5), this.size));
+    let targetWidth = Math.max(4, computeBlingWidth(this.shape, chosen, (spec.width || 0.5), this.size));
         const ratio = sprite.height / sprite.width;
         let targetHeight = targetWidth * ratio;
 

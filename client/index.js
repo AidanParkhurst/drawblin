@@ -981,6 +981,8 @@ window.draw = () => {
         if (you.name) g.n = you.name;
         if (you.shape) g.s = you.shape;
         if (you.petKey) g.p = you.petKey;
+    // Broadcast local picker bling preference (non-authoritative; server controls hasBling)
+    if (you.blingType) g.bl = you.blingType;
         // Lines: send when changed since last send (length changed) OR a newcomer joined since last send
         let didIncludeLines = false;
         const needResendForJoin = (__newPlayersSinceLastSend > 0) && you.lines && you.lines.length > 0;
@@ -1177,8 +1179,8 @@ function drawTitle() {
     // Mobile: title at header Y, hint beneath it. Desktop: original centered placement.
     try {
         const hint = isMobileLike
-            ? 'Drag your goblin to move. Draw within the range'
-            : 'Click to Draw, WASD or Arrows to Move';
+            ? 'Drag your goblin to move. Draw within your range'
+            : 'Click to Draw, WASD or Drag to Move';
         if (isMobileLike) {
             // Title first at header Y
             textSize(32);
@@ -1345,6 +1347,9 @@ window.addEventListener('keydown', (event) => {
     try {
         const k = (event.key || '').toLowerCase();
         you.keyStates[k] = true;
+        // Also store the raw event.key variant (e.g. 'ArrowLeft') so older checks that
+        // reference the capitalized form continue to work.
+        try { if (event.key) you.keyStates[event.key] = true; } catch (_) {}
     } catch (e) { you.keyStates[event.key] = true; }
 });
 window.addEventListener('keyup', (event) => {
@@ -1355,6 +1360,8 @@ window.addEventListener('keyup', (event) => {
     try {
         const k = (event.key || '').toLowerCase();
         you.keyStates[k] = false; // Reset the key state when the key is
+        // Also clear the raw key variant (e.g. 'ArrowLeft') for compatibility
+        try { if (event.key) you.keyStates[event.key] = false; } catch (_) {}
     } catch (e) { you.keyStates[event.key] = false; }
 });
 
@@ -1470,7 +1477,9 @@ function onmessage(event) {
                 shape: data.g.s,
                 ui_color: data.g.ui,
                 tool: data.g.t,
-                petKey: data.g.p
+                petKey: data.g.p,
+                // support compact bling key (bl) or b or bt if present
+                blingType: (data.g && (data.g.bl || data.g.b || data.g.bt)) ? (data.g.bl || data.g.b || data.g.bt) : undefined
             } : null);
             if (!payload || payload.id == null) break;
             // Detect whether the original message explicitly contained lines
@@ -1524,6 +1533,17 @@ function onmessage(event) {
                 goblin.name = payload.name || payload.n || goblin.name || '';
                 goblin.shape = payload.shape || payload.s || goblin.shape || 'manny';
                 goblin.setSize();
+                // Apply incoming blingType if provided in the payload (do not change hasBling)
+                try {
+                    // Determine whether bling was explicitly provided in the original message
+                    const blingProvided = (data.goblin && Object.prototype.hasOwnProperty.call(data.goblin, 'blingType'))
+                        || (data.g && (Object.prototype.hasOwnProperty.call(data.g, 'bl') || Object.prototype.hasOwnProperty.call(data.g, 'b') || Object.prototype.hasOwnProperty.call(data.g, 'bt')));
+                    if (blingProvided) {
+                        const incomingBling = payload.blingType || (data.goblin && data.goblin.blingType) || (data.g && (data.g.bl || data.g.b || data.g.bt)) || null;
+                        if (incomingBling) goblin.blingType = incomingBling;
+                        else goblin.blingType = null;
+                    }
+                } catch (e) {}
                 // Handle pet changes (create/update/remove)
                 const incomingPet = payload.petKey || payload.p || null;
                 if (incomingPet && typeof incomingPet === 'string') {
