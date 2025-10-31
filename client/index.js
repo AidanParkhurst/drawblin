@@ -345,6 +345,24 @@ function __drawGlobalLines(){
             }
         }
     }
+    else if (lobby_type === 'guessinggame') {
+        // Guessing Game visibility rules
+        // - drawing: only the current artist's lines
+        // - reveal: show the current artist's lines
+        // - waiting/other: hide all drawings
+        if (game_state === 'drawing') {
+            const artist = current_artist;
+            allowOwner = (ownerId) => __idEq(ownerId, artist);
+        } else if (game_state === 'reveal') {
+            const artist = current_artist;
+            allowOwner = (ownerId) => __idEq(ownerId, artist);
+        } else if (game_state === 'waiting') {
+            // During the scoreboard/waiting phase, show everyone's drawings
+            allowOwner = () => true;
+        } else {
+            allowOwner = () => false;
+        }
+    }
     push();
     strokeJoin(ROUND); strokeCap(ROUND); noFill();
     let lastColorKey = null; let lastWeight = -1;
@@ -1666,22 +1684,21 @@ function onmessage(event) {
             else if (lobby_type === 'guessinggame') {
                 if (data.state === 'waiting') {
                     try { stopDragImmediate(); } catch {}
-                    // Entering scoreboard/waiting: clear all drawings so text isn't overlapped
-                    for (let g of goblins) { g.lines = []; try { __clearOwnerLines(g.id); } catch {} }
+                    // If we're transitioning from drawing -> waiting, clear all drawings so canvas resets for next round.
+                    if (prev_state === 'drawing') {
+                        for (let g of goblins) { g.lines = []; try { __clearOwnerLines(g.id); } catch {} }
+                    }
+                    // Otherwise (e.g., other transitions into waiting), preserve drawings so scoreboard can show art.
                     timer = data.time;
                 } else if (data.state === 'drawing') {
+                    const prevArtist = current_artist;
                     current_artist = data.artistId;
-                    // if you are the artist, you received the prompt
-                    if (you.id === current_artist) {
-                        if (game_state !== 'drawing') { // just entered the drawing state, clear previous drawings
-                            you.lines = []; // Clear previous lines for the new drawing
-                            try { __clearOwnerLines(you.id); } catch {}
-                        }
-                        prompt = data.prompt;
-                    } else {
-                        // otherwise you just receive masked prompt already in data.prompt
-                        prompt = data.prompt;
+                    // If we just entered drawing, or the artist changed, clear all local drawings so the new artist gets a fresh canvas.
+                    if (game_state !== 'drawing' || !__idEq(prevArtist, current_artist)) {
+                        for (let g of goblins) { g.lines = []; try { __clearOwnerLines(g.id); } catch {} }
                     }
+                    // if you are the artist, you received the prompt (others receive masked prompt)
+                    prompt = data.prompt;
                     timer = data.time;
                 } else if (data.state === 'reveal') {
                     try { stopDragImmediate(); } catch {}
