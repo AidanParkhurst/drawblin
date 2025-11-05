@@ -1402,6 +1402,8 @@ function onopen() {
         you.lines = [];
         try { __clearOwnerLines(you.id); } catch {}
     }
+    // Play local pop-in so the player's goblin visually appears when joining a lobby
+    try { you && typeof you.triggerAppear === 'function' && you.triggerAppear(); } catch {}
 }
 function onmessage(event) {
     let data;

@@ -292,31 +292,60 @@ body.house-mode #play-menu {
     position: fixed;
     left: 12px;
     top: 12px;
-    width: 180px;
-    border: 3px dashed rgba(30,30,30,0.08);
+    width: 150px; /* slightly narrower overall */
+    /* overall control window does not need an outer border */
+    border: none;
     border-radius: 10px;
-    padding: 10px 10px 12px 10px;
+    padding: 6px 0 0 0; /* keep small padding so title aligns with Play button style */
     display: none; /* toggled via JS */
     z-index: 900;
     font-family: 'Neucha';
     color: rgba(30,30,30,0.6);
+    /* soft translucent background with blur to separate from canvas */
+    backdrop-filter: blur(6px);
 }
 
-#house-controls .house-controls__title { margin-bottom: 8px; font-size: 18px; }
-#house-controls .house-controls__buttons { display: flex; flex-direction: column; gap: 8px; }
+/* Title behaves like the Play button: dashed border, rounded, clickable opener */
+#house-controls .house-controls__title {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    margin-bottom: 0; /* spacing handled by buttons container gap */
+    font-size: 18px;
+    color: rgba(30,30,30,0.7);
+    background: rgba(255,255,255,0);
+    border: 3px dashed rgba(30,30,30,0.2);
+    border-radius: 10px;
+    text-align: left;
+    cursor: pointer;
+    font-family: 'Neucha';
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+#house-controls .house-controls__buttons {
+    display: none; /* shown when container has .open or JS sets inline style */
+    flex-direction: column;
+    gap: 8px; /* uniform gap between dropdown buttons */
+    margin-top: 8px; /* spacing between title and first button */
+    padding: 0; /* remove inner padding so dropdown buttons align to container edges */
+}
 
 #house-controls .house-controls__btn {
     display: block;
     width: 100%;
+    box-sizing: border-box;
     padding: 8px 10px;
     font-size: 18px;
     background: rgba(255,255,255,0);
-    border: 3px dashed rgba(30,30,30,0.08);
+    border: 3px dashed rgba(30,30,30,0.2);
     border-radius: 10px;
     cursor: pointer;
     font-family: 'Neucha';
-    color: rgba(30,30,30,0.5);
+    color: rgba(30,30,30,0.7);
     transition: 0.2s all;
+    margin: 0; /* use gap to space buttons instead of per-button margin */
 }
 
 #house-controls .house-controls__btn:hover {
@@ -325,30 +354,11 @@ body.house-mode #play-menu {
 }
 
 /* House toggle button (like chat) */
-#house-controls .house-controls__toggle {
-    position: absolute;
-    top: 3px;
-    right: 3px;
-    padding: 0 6px;
-    height: 24px;
-    border: 3px dashed rgba(30,30,30,0.08);
-    border-radius: 10px;
-    background: rgba(255,255,255,0);
-    color: rgba(30,30,30,0.8);
-    font-family: 'Neucha';
-    font-size: 16px;
-    line-height: 1;
-    cursor: pointer;
-    z-index: 1;
-}
+/* toggle button removed — title now acts as opener */
 
 /* Collapsed state */
-#house-controls.house-controls--collapsed {
-    /* Keep padding consistent so the title doesn't shift when collapsing */
-    padding: 10px 10px 0px 10px;
-}
-#house-controls.house-controls--collapsed .house-controls__buttons {
-    display: none;
+#house-controls.open .house-controls__buttons {
+    display: flex;
 }
 
 /* Chat no longer supports a collapsed/toggle state; related styles removed */
@@ -391,6 +401,11 @@ body.house-mode #play-menu {
 
     /* House controls slightly smaller */
     #house-controls { left: 8px; top: 8px; width: 140px; }
+
+    /* When house controls are visible on mobile, reduce chat width so we get a three-item row: chat | house | account */
+    body.house-mode #chat { width: 34%; max-width: 180px; }
+    /* Center the house controls button in the top row when active */
+    body.house-mode #house-controls { left: 50%; transform: translateX(-50%); top: 8px; }
 }
 
 /* Prevent long-press/highlight behavior on touch devices that shows selection
