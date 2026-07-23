@@ -1,7 +1,15 @@
+html {
+    /* Matches the p5 canvas fill (background(240)) and theme-color meta tag.
+       Without this, iOS Safari's overscroll bounce / toolbar-hide area shows
+       through as plain white instead of the game's off-white. */
+    background: #f0f0f0;
+}
+
 body {
     height: 100%;
     margin: 0;
-    display: flex; 
+    display: flex;
+    background: #f0f0f0;
 
     /* Center Game */
     justify-content: center;
