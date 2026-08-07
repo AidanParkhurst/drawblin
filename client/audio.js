@@ -12,6 +12,7 @@ import tapWoodUrl from './assets/sfx/tap_wood.mp3';
 import { assets } from './assets.js';
 
 let ctx = null;
+let master = null; // shared limiter all SFX route through, so simultaneous sounds (e.g. many goblins popping in at once on join) can't sum past 0dBFS and hard-clip
 let buffers = { pop: null, drag: null, thud: null, tap: null, tap_wood: null, spray_click: null, spray: null };
 // Track active drag grain sources so we can cut them off immediately when user stops drawing
 let activeDrag = [];
@@ -29,11 +30,60 @@ function ensureContext() {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return null;
     ctx = new AudioCtx({ latencyHint: 'interactive' });
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.value = -8;
+    compressor.knee.value = 6;
+    compressor.ratio.value = 16;
+    compressor.attack.value = 0.003;
+    compressor.release.value = 0.15;
+    compressor.connect(ctx.destination);
+    master = compressor;
   }
   if (ctx && ctx.state === 'suspended' && unlocked) {
     ctx.resume().catch(()=>{});
   }
   return ctx;
+}
+
+// Safari (iOS in particular) does not strip MP3 encoder-delay padding when decoding,
+// so decoded buffers carry extra near-silence at the start/end that Chrome/desktop
+// browsers already trim. That skews perceived volume and throws off grain-stop timing
+// (which relies on buffer.duration). Trim it here so buffers behave the same everywhere.
+function trimSilence(buffer, context, thresholdDb = -60) {
+  try {
+    const channels = buffer.numberOfChannels;
+    const length = buffer.length;
+    const threshold = Math.pow(10, thresholdDb / 20);
+    let start = length, end = 0;
+    for (let ch = 0; ch < channels; ch++) {
+      const data = buffer.getChannelData(ch);
+      for (let i = 0; i < length; i++) {
+        if (Math.abs(data[i]) > threshold) { if (i < start) start = i; break; }
+      }
+      for (let i = length - 1; i >= 0; i--) {
+        if (Math.abs(data[i]) > threshold) { if (i > end) end = i; break; }
+      }
+    }
+    if (start >= end) return buffer; // all silence or nothing detected; leave as-is
+    const trimmedLength = end - start + 1;
+    if (trimmedLength < 64 || trimmedLength === length) return buffer;
+    const trimmed = context.createBuffer(channels, trimmedLength, buffer.sampleRate);
+    const fadeSamples = Math.min(64, Math.floor(trimmedLength / 4));
+    for (let ch = 0; ch < channels; ch++) {
+      const out = new Float32Array(trimmedLength);
+      out.set(buffer.getChannelData(ch).subarray(start, end + 1));
+      // Tiny fade in/out so the hard trim edge doesn't produce a click
+      for (let i = 0; i < fadeSamples; i++) {
+        const g = i / fadeSamples;
+        out[i] *= g;
+        out[trimmedLength - 1 - i] *= g;
+      }
+      trimmed.copyToChannel(out, ch);
+    }
+    return trimmed;
+  } catch {
+    return buffer;
+  }
 }
 
 async function decodeAll() {
@@ -43,7 +93,8 @@ async function decodeAll() {
   async function fetchDecode(url) {
     const resp = await fetch(url);
     const arr = await resp.arrayBuffer();
-    return await context.decodeAudioData(arr.slice(0));
+    const decoded = await context.decodeAudioData(arr.slice(0));
+    return trimSilence(decoded, context);
   }
   decodePromise = Promise.all([
     fetchDecode(popUrl).catch(()=>null),
@@ -103,7 +154,7 @@ function playFromBuffer(name, { volume = 1.0, playbackRate = 1.0, track = false 
   src.playbackRate.value = playbackRate;
   const gain = context.createGain();
   gain.gain.value = volume;
-  src.connect(gain).connect(context.destination);
+  src.connect(gain).connect(master);
   try { src.start(0); } catch {}
   if (track) {
     activeDrag.push({ src, gain, startedAt: context.currentTime, duration: src.buffer?.duration || 0 });
@@ -119,7 +170,7 @@ function playFromBuffer(name, { volume = 1.0, playbackRate = 1.0, track = false 
 // Public play helpers with tuned volumes
 export function playPop() {
   // Slight random pitch for variation
-  playFromBuffer('pop', { volume: 0.35, playbackRate: 0.92 + Math.random()*0.16 });
+  playFromBuffer('pop', { volume: 0.22, playbackRate: 0.92 + Math.random()*0.16 });
 }
 export function playThud() {
   playFromBuffer('thud', { volume: 0.45, playbackRate: 0.95 + Math.random()*0.1 });
@@ -193,7 +244,7 @@ export function playSprayGrain(distanceFactor = 0.5) {
     src.playbackRate.value = rate;
     const gain = context.createGain();
     gain.gain.value = vol;
-    src.connect(gain).connect(context.destination);
+    src.connect(gain).connect(master);
     try { src.start(0); } catch {}
     activeSpray.push({ src, gain, startedAt: context.currentTime, duration: src.buffer?.duration || 0 });
     const endTime = (src.buffer?.duration || 0) + 0.05;
