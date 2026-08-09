@@ -13,7 +13,7 @@ import { mountHouseControls, updateHouseControlsVisibility, onHouseModeSelected,
 import { assets } from "./assets.js";
 import { playThud, playDragGrain, stopDragImmediate, playSprayClick, playSprayGrain, stopSprayImmediate } from './audio.js';
 import { calculateUIColor, randomPaletteColor } from "./colors.js";
-import { ready as authReady, isAuthConfigured, getUser, getProfileName, upsertProfileName } from './auth.js';
+import { ready as authReady, isAuthConfigured, isLoggedIn, getUser, getProfileName, upsertProfileName } from './auth.js';
 import { generateGoblinName } from './names.js';
 import { spawnBurst, updateBursts } from './burst.js';
 import Pet from './pets.js';
@@ -486,14 +486,17 @@ async function start() {
         btn.textContent = 'Play online';
         document.body.appendChild(btn);
 
-        const menu = document.createElement('div');
-        menu.id = 'play-menu';
-        menu.innerHTML = `
+        // Private Lobby only works for signed-in users, so hide it entirely when logged out
+        const playMenuItemsHtml = () => `
             <a class="play-menu__item" data-mode="freedraw">Free Draw</a>
             <a class="play-menu__item" data-mode="quickdraw">Team Draw</a>
             <a class="play-menu__item" data-mode="guessinggame">Guessing Game</a>
-            <a class="play-menu__item" data-mode="house">Private Lobby</a>
+            ${isAuthConfigured() && isLoggedIn() ? '<a class="play-menu__item" data-mode="house">Private Lobby</a>' : ''}
         `;
+
+        const menu = document.createElement('div');
+        menu.id = 'play-menu';
+        menu.innerHTML = playMenuItemsHtml();
         document.body.appendChild(menu);
 
         // Position-aware menu toggler: on desktop place above the opener (by default),
@@ -560,12 +563,7 @@ async function start() {
             } else {
                 btn.textContent = 'Play online';
                 try { btn.classList.remove('connected'); } catch (e) { /* ignore */ }
-                menu.innerHTML = `
-                    <a class="play-menu__item" data-mode="freedraw">Free Draw</a>
-                    <a class="play-menu__item" data-mode="quickdraw">Team Draw</a>
-                    <a class="play-menu__item" data-mode="guessinggame">Guessing Game</a>
-                    <a class="play-menu__item" data-mode="house">Private Lobby</a>
-                `;
+                menu.innerHTML = playMenuItemsHtml();
                 // Hide chat when not in a lobby
                 try { if (chat && chat.container) chat.container.style.display = 'none'; } catch (e) { /* ignore */ }
                 // On desktop (non-mobile), move play button to bottom center for prominence
@@ -795,6 +793,8 @@ window.setup = async() => {
         }
         // Auth changed could add/remove home portal
         ensureHomePortal();
+        // Auth changed could add/remove the Private Lobby play menu option
+        try { if (!joined && window.updatePlayButtonState) window.updatePlayButtonState(); } catch {}
     });
 
     // React to profile display-name saves from the account menu
